@@ -11,6 +11,7 @@ Pingloom-rs places League of Legends pings and emotes on the Windows desktop. Ho
 - Hold **Alt** and drag with the left mouse button to open the ping wheel. Hold **Ctrl** and drag for the emote wheel. Release over a slice to show its asset.
 - Release in the centre, press **Esc**, or right-click to cancel.
 - Short trigger taps and unrelated shortcuts are passed through. The default toggle shortcut is **Ctrl+Alt+P**.
+- If a swallowed custom/Caps Lock trigger's key-up is lost, Pause then Resume (or opening Settings) explicitly re-arms it. Repeats and the matching key-up stay suppressed; if the key was already released, its next press/release pair is consumed.
 - Left-click the notification-area icon to open Settings. Right-click it for Settings, Pause/Resume, or Quit.
 - Settings provide trigger and toggle keys, drag threshold, fullscreen-display pause, optional trigger-click actions, ping/emote size, duration, volume, mute, and the eight assignments on each wheel. Settings use native keyboard-focusable controls.
 

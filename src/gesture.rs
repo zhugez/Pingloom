@@ -48,6 +48,7 @@ pub struct GestureEngine {
     state: GestureState,
     keys_down: [bool; 256],
     swallow_key_ups: [bool; 256],
+    ignore_trigger_until_up: [bool; 256],
     swallow_right_up: bool,
     need_menu_mask: u8,
     foreign_key: bool,
@@ -68,6 +69,7 @@ impl GestureEngine {
             state: GestureState::Idle,
             keys_down: [false; 256],
             swallow_key_ups: [false; 256],
+            ignore_trigger_until_up: [false; 256],
             swallow_right_up: false,
             need_menu_mask: 0,
             foreign_key: false,
@@ -99,19 +101,24 @@ impl GestureEngine {
         Ok(decision)
     }
 
+    /// Disabling is an explicit recovery point for swallowed keyboard triggers: their state is
+    /// cleared, but repeats and the eventual key-up remain swallowed until release.
     pub fn set_enabled(&mut self, enabled: bool) -> InputDecision {
         let mut decision = InputDecision::default();
         if !enabled {
             self.cancel_gesture(&mut decision);
+            self.recover_swallowed_triggers();
         }
         self.enabled = enabled;
         decision
     }
 
+    /// Suspending for settings uses the same safe recovery as an explicit pause.
     pub fn set_suspended(&mut self, suspended: bool) -> InputDecision {
         let mut decision = InputDecision::default();
         if suspended {
             self.cancel_gesture(&mut decision);
+            self.recover_swallowed_triggers();
         }
         self.suspended = suspended;
         decision
@@ -212,6 +219,23 @@ impl GestureEngine {
         }
     }
 
+    fn recover_swallowed_triggers(&mut self) {
+        // A pause is the explicit policy boundary: OS state cannot distinguish a lost key-up
+        // from a deliberately held key whose down was swallowed.
+        for vk in 0..=u8::MAX {
+            let index = usize::from(vk);
+            let trigger = self.key_trigger_vk(WheelKind::Ping) == Some(vk)
+                || self.key_trigger_vk(WheelKind::Emote) == Some(vk);
+            if trigger && self.swallow_key_ups[index] {
+                self.keys_down[index] = false;
+                self.ignore_trigger_until_up[index] = true;
+            }
+        }
+        if !self.trigger_held(WheelKind::Ping) && !self.trigger_held(WheelKind::Emote) {
+            self.foreign_key = false;
+        }
+    }
+
     fn modifier_bits(&self) -> u8 {
         let mut modifiers = 0;
         for vk in 0..=u8::MAX {
@@ -298,6 +322,10 @@ impl GestureEngine {
 
     fn on_key_down(&mut self, vk: u8, decision: &mut InputDecision) {
         let index = usize::from(vk);
+        if self.ignore_trigger_until_up[index] {
+            decision.swallow = true;
+            return;
+        }
         let repeat = self.keys_down[index];
         self.keys_down[index] = true;
 
@@ -320,6 +348,9 @@ impl GestureEngine {
                     self.cancel_gesture(decision);
                 }
                 self.enabled = !self.enabled;
+                if !self.enabled {
+                    self.recover_swallowed_triggers();
+                }
                 decision.action(Action::Toggled {
                     enabled: self.enabled,
                 });
@@ -348,6 +379,13 @@ impl GestureEngine {
 
     fn on_key_up(&mut self, vk: u8, decision: &mut InputDecision) {
         let index = usize::from(vk);
+        if self.ignore_trigger_until_up[index] {
+            self.keys_down[index] = false;
+            self.swallow_key_ups[index] = false;
+            self.ignore_trigger_until_up[index] = false;
+            decision.swallow = true;
+            return;
+        }
         let held_before = self.trigger_held(self.owner);
         self.keys_down[index] = false;
         if !self.trigger_held(WheelKind::Ping) && !self.trigger_held(WheelKind::Emote) {
@@ -806,6 +844,105 @@ mod tests {
                 ReplayInput::ButtonDown(Button::Left),
             ]
         );
+    }
+
+    #[test]
+    fn resync_does_not_release_a_deliberately_held_swallowed_trigger() {
+        let settings = Settings {
+            trigger: Trigger::Key { vk: b'Q' },
+            emote_trigger: None,
+            ..Settings::default()
+        };
+        let mut engine = GestureEngine::new(settings).unwrap();
+        assert!(engine.on_event(key_down(b'Q')).swallow);
+        engine.resync_key_states(|_| false);
+        assert!(engine.on_event(down(Button::Left, 100, 100, 10)).swallow);
+        let opened = engine.on_event(movement(130, 100, 20));
+        assert_eq!(
+            opened.actions[0],
+            Action::WheelOpen {
+                wheel: WheelKind::Ping,
+                origin: Point::new(100, 100),
+            }
+        );
+        assert!(engine.on_event(key_down(b'Q')).swallow);
+        let released = engine.on_event(key_up(b'Q'));
+        assert!(released.swallow);
+        assert_eq!(released.actions, [Action::Cancel]);
+        assert!(engine.on_event(up(Button::Left, 130, 100, 30)).swallow);
+    }
+
+    #[test]
+    fn explicit_settings_pause_recovers_lost_trigger_release_safely() {
+        let settings = Settings {
+            trigger: Trigger::Key { vk: b'Q' },
+            emote_trigger: None,
+            ..Settings::default()
+        };
+        let mut engine = GestureEngine::new(settings).unwrap();
+        assert!(engine.on_event(key_down(b'Q')).swallow);
+        assert!(engine.on_event(down(Button::Left, 100, 100, 10)).swallow);
+        assert_eq!(
+            engine.on_event(movement(130, 100, 20)).actions[0],
+            Action::WheelOpen {
+                wheel: WheelKind::Ping,
+                origin: Point::new(100, 100),
+            }
+        );
+
+        // The physical key-up is lost; opening settings explicitly pauses and cancels the wheel.
+        assert_eq!(engine.set_suspended(true).actions, [Action::Cancel]);
+        assert_eq!(engine.state(), GestureState::SwallowUp);
+        engine.set_suspended(false);
+        engine.resync_key_states(|_| false); // OS async state may still report a swallowed hold as up
+        assert!(engine.on_event(key_down(b'Q')).swallow); // held-key repeats stay suppressed
+        assert!(engine.on_event(up(Button::Left, 130, 100, 30)).swallow);
+        assert!(!engine.on_event(down(Button::Left, 100, 100, 40)).swallow);
+        assert!(!engine.on_event(up(Button::Left, 100, 100, 41)).swallow);
+        assert!(engine.on_event(key_up(b'Q')).swallow); // eventual key-up stays suppressed
+
+        assert!(engine.on_event(key_down(b'Q')).swallow); // next fresh press is a trigger again
+        assert!(engine.on_event(down(Button::Left, 100, 100, 50)).swallow);
+        assert!(engine.on_event(key_up(b'Q')).swallow);
+        assert!(!engine.on_event(up(Button::Left, 100, 100, 51)).swallow);
+    }
+
+    #[test]
+    fn explicit_disable_recovers_a_lost_custom_trigger_release() {
+        let settings = Settings {
+            trigger: Trigger::Key { vk: b'Q' },
+            emote_trigger: None,
+            ..Settings::default()
+        };
+        let mut engine = GestureEngine::new(settings).unwrap();
+        assert!(engine.on_event(key_down(b'Q')).swallow);
+        engine.set_enabled(false);
+        engine.set_enabled(true);
+        assert!(engine.on_event(key_down(b'Q')).swallow);
+        assert!(!engine.on_event(down(Button::Left, 1, 1, 1)).swallow);
+        assert!(engine.on_event(key_up(b'Q')).swallow);
+    }
+
+    #[test]
+    fn toggle_pause_recovers_a_lost_custom_trigger_release() {
+        let settings = Settings {
+            trigger: Trigger::Key { vk: b'Q' },
+            emote_trigger: None,
+            ..Settings::default()
+        };
+        let mut engine = GestureEngine::new(settings).unwrap();
+        engine.on_event(key_down(b'Q'));
+        engine.on_event(key_down(CTRL));
+        engine.on_event(key_down(ALT));
+        assert_eq!(
+            engine.on_event(key_down(b'P')).actions,
+            [Action::Toggled { enabled: false }]
+        );
+        assert!(engine.on_event(key_down(b'Q')).swallow);
+        assert!(!engine.enabled());
+        engine.set_enabled(true);
+        assert!(!engine.on_event(down(Button::Left, 1, 1, 1)).swallow);
+        assert!(engine.on_event(key_up(b'Q')).swallow);
     }
 
     #[test]
