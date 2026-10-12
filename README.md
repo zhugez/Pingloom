@@ -57,7 +57,7 @@ The bundled League of Legends ping textures and sounds, and built-in emote image
 
 ## Validation
 
-At this handoff, the following local checks passed on Linux: `cargo fmt --all -- --check`, `cargo test` (21 tests), `cargo clippy --all-targets -- -D warnings`, and Windows GNU-target `cargo check`/Clippy. A linked Windows GNU executable build could not run in this environment because `x86_64-w64-mingw32-dlltool` is unavailable. The Windows MSVC CI workflow has been added but has not run for this revision. Neither a cross-target check nor CI compilation substitutes for runtime testing; no Windows 11 smoke test has been completed.
+At this handoff, the following local checks passed on Linux: `cargo fmt --all -- --check`, `cargo test` (29 tests), `cargo clippy --all-targets -- -D warnings`, and Windows GNU-target `cargo check`/Clippy. A linked Windows GNU executable build could not run in this environment because `x86_64-w64-mingw32-dlltool` is unavailable. The Windows MSVC CI workflow has been added but has not run for this revision. Neither a cross-target check nor CI compilation substitutes for runtime testing; no Windows 11 smoke test has been completed.
 
 Before treating the desktop runtime as verified, test on Windows 11 x64:
 

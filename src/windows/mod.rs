@@ -3,14 +3,19 @@ mod audio;
 mod overlay;
 mod settings_window;
 
+use std::cell::RefCell;
+use std::ffi::c_void;
 use std::mem::{size_of, zeroed};
 use std::path::PathBuf;
 use std::ptr::{null, null_mut};
+use std::sync::atomic::{AtomicPtr, Ordering};
 
 use pingloom_core::gesture::{InputDecision, ReplayInput};
 use pingloom_core::model::{Action, Button, InputEvent, Point, WheelKind};
 use pingloom_core::settings::Settings;
 use pingloom_core::GestureEngine;
+
+use super::logic::{insert_replay_batch, ReplayInsertReport};
 use windows_sys::core::w;
 use windows_sys::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows_sys::Win32::Graphics::Gdi::{
@@ -18,7 +23,6 @@ use windows_sys::Win32::Graphics::Gdi::{
 };
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::System::SystemInformation::GetTickCount64;
-use windows_sys::Win32::System::Threading::GetCurrentThreadId;
 use windows_sys::Win32::UI::HiDpi::{
     GetDpiForMonitor, SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
     MDT_EFFECTIVE_DPI,
@@ -35,8 +39,8 @@ use windows_sys::Win32::UI::Shell::{
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CallNextHookEx, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu,
     DispatchMessageW, GetCursorPos, GetMessageW, LoadIconW, PeekMessageW, PostMessageW,
-    PostQuitMessage, PostThreadMessageW, RegisterClassW, SetForegroundWindow, SetTimer,
-    SetWindowLongPtrW, SetWindowsHookExW, TrackPopupMenu, TranslateMessage, UnhookWindowsHookEx,
+    PostQuitMessage, RegisterClassW, SetForegroundWindow, SetTimer, SetWindowLongPtrW,
+    SetWindowsHookExW, TrackPopupMenu, TranslateMessage, UnhookWindowsHookEx, CREATESTRUCTW,
     GWLP_USERDATA, GWL_STYLE, HC_ACTION, HHOOK, HWND_MESSAGE, IDI_APPLICATION, KBDLLHOOKSTRUCT,
     LLKHF_INJECTED, LLMHF_INJECTED, MF_STRING, MSLLHOOKSTRUCT, TPM_RETURNCMD, TPM_RIGHTBUTTON,
     WH_KEYBOARD_LL, WH_MOUSE_LL, WM_APP, WM_CLOSE, WM_CONTEXTMENU, WM_DESTROY, WM_DISPLAYCHANGE,
@@ -58,12 +62,26 @@ const WM_ACTION: u32 = WM_APP + 12;
 const WM_FRAMES: u32 = WM_APP + 13;
 const APP_SETTINGS_MESSAGE: u32 = WM_APP + 14;
 const APP_SETTINGS_CLOSED: u32 = WM_APP + 15;
+const WM_REPLAY_FAILURE: u32 = WM_APP + 16;
+const WM_SETTINGS_FAILURE: u32 = WM_APP + 17;
 static mut CONTROL_FONT: isize = 0;
 const ID_SETTINGS: i32 = 1;
 const ID_TOGGLE: i32 = 2;
 const ID_QUIT: i32 = 3;
 
 static mut APPLICATION: *mut App = null_mut();
+static MAIN_WINDOW: AtomicPtr<c_void> = AtomicPtr::new(null_mut());
+
+#[derive(Clone, Copy)]
+struct DeferredMainMessage {
+    message: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+}
+
+thread_local! {
+    static DEFERRED_MAIN_MESSAGES: RefCell<Vec<DeferredMainMessage>> = const { RefCell::new(Vec::new()) };
+}
 
 struct QueuedAction {
     action: Action,
@@ -73,7 +91,6 @@ struct QueuedAction {
 struct App {
     hwnd: HWND,
     instance: HINSTANCE,
-    thread_id: u32,
     mouse_hook: HHOOK,
     key_hook: HHOOK,
     engine: GestureEngine,
@@ -83,6 +100,7 @@ struct App {
     pending_inputs: Vec<ReplayInput>,
     native_keys_down: [bool; 256],
     tray_added: bool,
+    shutting_down: bool,
 }
 
 pub fn run() -> Result<(), String> {
@@ -133,7 +151,6 @@ unsafe fn run_inner() -> Result<(), String> {
     let mut app = Box::new(App {
         hwnd: null_mut(),
         instance,
-        thread_id: GetCurrentThreadId(),
         mouse_hook: null_mut(),
         key_hook: null_mut(),
         settings_window: SettingsWindow::new(settings_path),
@@ -143,6 +160,7 @@ unsafe fn run_inner() -> Result<(), String> {
         pending_inputs: Vec::new(),
         native_keys_down: [false; 256],
         tray_added: false,
+        shutting_down: false,
     });
     let app_ptr = (&mut *app) as *mut App;
     APPLICATION = app_ptr;
@@ -166,8 +184,10 @@ unsafe fn run_inner() -> Result<(), String> {
         return Err("could not create the native application message window".into());
     }
     app.hwnd = hwnd;
+    MAIN_WINDOW.store(hwnd, Ordering::Release);
     if let Err(error) = app.install_tray().and_then(|()| app.install_hooks()) {
         app.shutdown();
+        MAIN_WINDOW.store(null_mut(), Ordering::Release);
         APPLICATION = null_mut();
         return Err(error);
     }
@@ -180,14 +200,11 @@ unsafe fn run_inner() -> Result<(), String> {
         if result <= 0 {
             if result < 0 {
                 app.shutdown();
+                MAIN_WINDOW.store(null_mut(), Ordering::Release);
                 APPLICATION = null_mut();
                 return Err("Windows message loop failed".into());
             }
             break;
-        }
-        if message.hwnd.is_null() && message.message == WM_INJECT {
-            app.drain_injections();
-            continue;
         }
         if app.settings_window.hwnd().is_null()
             || windows_sys::Win32::UI::WindowsAndMessaging::IsDialogMessageW(
@@ -200,8 +217,68 @@ unsafe fn run_inner() -> Result<(), String> {
         }
     }
     app.shutdown();
+    MAIN_WINDOW.store(null_mut(), Ordering::Release);
     APPLICATION = null_mut();
     Ok(())
+}
+
+unsafe fn free_deferred_message(message: DeferredMainMessage) {
+    match message.message {
+        WM_ACTION => drop(Box::from_raw(message.lparam as *mut QueuedAction)),
+        WM_FRAMES => drop(Box::from_raw(
+            message.lparam as *mut (String, Vec<AnimatedFrame>),
+        )),
+        APP_SETTINGS_MESSAGE => drop(Box::from_raw(message.lparam as *mut Settings)),
+        _ => {}
+    }
+}
+
+pub(crate) unsafe fn post_main_message(message: u32, wparam: WPARAM, lparam: LPARAM) -> bool {
+    if SettingsWindow::callback_busy() {
+        DEFERRED_MAIN_MESSAGES.with(|queue| {
+            queue.borrow_mut().push(DeferredMainMessage {
+                message,
+                wparam,
+                lparam,
+            })
+        });
+        return true;
+    }
+    let hwnd = MAIN_WINDOW.load(Ordering::Acquire);
+    !hwnd.is_null() && PostMessageW(hwnd, message, wparam, lparam) != 0
+}
+
+pub(crate) unsafe fn flush_deferred_main_messages() {
+    let messages = DEFERRED_MAIN_MESSAGES.with(|queue| std::mem::take(&mut *queue.borrow_mut()));
+    let hwnd = MAIN_WINDOW.load(Ordering::Acquire);
+    for message in messages {
+        if hwnd.is_null()
+            || PostMessageW(hwnd, message.message, message.wparam, message.lparam) == 0
+        {
+            free_deferred_message(message);
+        }
+    }
+}
+
+unsafe fn defer_during_settings_callback(message: u32, wparam: WPARAM, lparam: LPARAM) -> bool {
+    if !SettingsWindow::callback_busy() {
+        return false;
+    }
+    match message {
+        WM_INJECT | WM_ACTION | WM_FRAMES | APP_SETTINGS_MESSAGE | APP_SETTINGS_CLOSED
+        | WM_REPLAY_FAILURE | WM_SETTINGS_FAILURE | WM_DISPLAYCHANGE => {
+            DEFERRED_MAIN_MESSAGES.with(|queue| {
+                queue.borrow_mut().push(DeferredMainMessage {
+                    message,
+                    wparam,
+                    lparam,
+                })
+            });
+        }
+        WM_TIMER | WM_TRAY => {}
+        _ => return false,
+    }
+    true
 }
 
 fn settings_path() -> Result<PathBuf, String> {
@@ -274,6 +351,7 @@ impl App {
     }
 
     unsafe fn shutdown(&mut self) {
+        self.shutting_down = true;
         self.overlay.wheel_close();
         self.drain_injections();
         if !self.mouse_hook.is_null() {
@@ -329,8 +407,8 @@ impl App {
                 self.pending_inputs.push(replay);
             }
         }
-        if !self.pending_inputs.is_empty() {
-            PostThreadMessageW(self.thread_id, WM_INJECT, 0, 0);
+        if !self.pending_inputs.is_empty() && PostMessageW(self.hwnd, WM_INJECT, 0, 0) == 0 {
+            self.drain_injections();
         }
         swallow || (!is_injected && has_prior_injects)
     }
@@ -468,52 +546,14 @@ impl App {
             self.apply_decision(decision, false, None);
         }
         let settings = self.settings().clone();
-        if !self
-            .settings_window
-            .open(self.hwnd, &settings, self.instance)
-        {
+        if !self.settings_window.open(&settings, self.instance) {
             if newly_opened {
                 let decision = self.engine.set_suspended(false);
                 self.apply_decision(decision, false, None);
             }
-            show_error("Could not create the settings window.");
-        }
-    }
-
-    unsafe fn show_tray_menu(&mut self) {
-        let menu = CreatePopupMenu();
-        if menu.is_null() {
-            return;
-        }
-        AppendMenuW(menu, MF_STRING, ID_SETTINGS as usize, w!("Settings"));
-        let toggle = if self.engine.enabled() {
-            w!("Pause gestures")
-        } else {
-            w!("Resume gestures")
-        };
-        AppendMenuW(menu, MF_STRING, ID_TOGGLE as usize, toggle);
-        AppendMenuW(menu, MF_STRING, ID_QUIT as usize, w!("Quit"));
-        let mut point = POINT { x: 0, y: 0 };
-        GetCursorPos(&mut point);
-        SetForegroundWindow(self.hwnd);
-        let selected = TrackPopupMenu(
-            menu,
-            TPM_RETURNCMD | TPM_RIGHTBUTTON,
-            point.x,
-            point.y,
-            0,
-            self.hwnd,
-            null(),
-        );
-        DestroyMenu(menu);
-        match selected {
-            ID_SETTINGS => self.show_settings(),
-            ID_TOGGLE => {
-                let decision = self.engine.set_enabled(!self.engine.enabled());
-                self.apply_decision(decision, false, None);
+            if PostMessageW(self.hwnd, WM_SETTINGS_FAILURE, 0, 0) == 0 {
+                output_debug_string("could not create the settings window");
             }
-            ID_QUIT => PostQuitMessage(0),
-            _ => {}
         }
     }
 
@@ -522,100 +562,40 @@ impl App {
             return;
         }
         let pending = std::mem::take(&mut self.pending_inputs);
-        let mut inputs = Vec::with_capacity(pending.len());
-        for replay in pending {
-            match replay {
-                ReplayInput::ButtonDown(button) | ReplayInput::ButtonUp(button) => {
-                    let down = matches!(replay, ReplayInput::ButtonDown(_));
-                    let (flags, mouse_data) = match button {
-                        Button::Left => (
-                            if down {
-                                MOUSEEVENTF_LEFTDOWN
-                            } else {
-                                MOUSEEVENTF_LEFTUP
-                            },
-                            0,
-                        ),
-                        Button::Right => (
-                            if down {
-                                MOUSEEVENTF_RIGHTDOWN
-                            } else {
-                                MOUSEEVENTF_RIGHTUP
-                            },
-                            0,
-                        ),
-                        Button::Middle => (
-                            if down {
-                                MOUSEEVENTF_MIDDLEDOWN
-                            } else {
-                                MOUSEEVENTF_MIDDLEUP
-                            },
-                            0,
-                        ),
-                        Button::X1 => (
-                            if down {
-                                MOUSEEVENTF_XDOWN
-                            } else {
-                                MOUSEEVENTF_XUP
-                            },
-                            XBUTTON1,
-                        ),
-                        Button::X2 => (
-                            if down {
-                                MOUSEEVENTF_XDOWN
-                            } else {
-                                MOUSEEVENTF_XUP
-                            },
-                            XBUTTON2,
-                        ),
-                    };
-                    inputs.push(INPUT {
-                        r#type: INPUT_MOUSE,
-                        Anonymous: windows_sys::Win32::UI::Input::KeyboardAndMouse::INPUT_0 {
-                            mi: MOUSEINPUT {
-                                dx: 0,
-                                dy: 0,
-                                mouseData: u32::from(mouse_data),
-                                dwFlags: flags,
-                                time: 0,
-                                dwExtraInfo: SELF_MARKER,
-                            },
-                        },
-                    });
-                }
-                ReplayInput::KeyDown(vk) | ReplayInput::KeyUp(vk) => {
-                    let down = matches!(replay, ReplayInput::KeyDown(_));
-                    let vk = u16::from(vk);
-                    let extended = matches!(
-                        vk,
-                        0xa3 | 0xa5 | 0x5b | 0x5c | 0x2d | 0x2e | 0x24 | 0x23 | 0x21 | 0x22 | 0x25
-                            ..=0x28
-                    );
-                    let mut flags = if down { 0 } else { KEYEVENTF_KEYUP };
-                    if extended {
-                        flags |= KEYEVENTF_EXTENDEDKEY;
-                    }
-                    inputs.push(INPUT {
-                        r#type: INPUT_KEYBOARD,
-                        Anonymous: windows_sys::Win32::UI::Input::KeyboardAndMouse::INPUT_0 {
-                            ki: KEYBDINPUT {
-                                wVk: vk,
-                                wScan: MapVirtualKeyW(u32::from(vk), MAPVK_VK_TO_VSC) as u16,
-                                dwFlags: flags,
-                                time: 0,
-                                dwExtraInfo: SELF_MARKER,
-                            },
-                        },
-                    });
-                }
-            }
-        }
-        if !inputs.is_empty() {
+        let report = insert_replay_batch(&pending, |replay| {
+            let inputs = replay
+                .iter()
+                .copied()
+                .map(|input| unsafe { native_input(input) })
+                .collect::<Vec<_>>();
             SendInput(
                 inputs.len() as u32,
                 inputs.as_ptr(),
                 size_of::<INPUT>() as i32,
-            );
+            ) as usize
+        });
+        if !report.complete || !report.balance_complete {
+            self.replay_failed(pending.len(), report);
+        }
+    }
+
+    unsafe fn replay_failed(&mut self, requested: usize, report: ReplayInsertReport) {
+        let message = format!(
+            "SendInput accepted {} of {requested} replay events after {} attempts; {} of {} balancing releases were accepted after {} attempts.",
+            report.inserted,
+            report.attempts,
+            report.balance_inserted,
+            report.balance_attempted.len(),
+            report.balance_attempts,
+        );
+        let decision = self.engine.set_enabled(false);
+        self.apply_decision(decision, false, None);
+        if self.shutting_down {
+            output_debug_string(&message);
+            return;
+        }
+        if PostMessageW(self.hwnd, WM_REPLAY_FAILURE, 0, 0) == 0 {
+            output_debug_string(&message);
         }
     }
 
@@ -626,15 +606,6 @@ impl App {
         lparam: LPARAM,
     ) -> Option<LRESULT> {
         match message {
-            WM_TRAY => {
-                let event = lparam as u32;
-                if event == WM_RBUTTONUP || event == WM_CONTEXTMENU {
-                    self.show_tray_menu();
-                } else if event == WM_LBUTTONUP {
-                    self.show_settings();
-                }
-                Some(0)
-            }
             WM_INJECT => {
                 self.drain_injections();
                 Some(0)
@@ -654,28 +625,9 @@ impl App {
                 self.apply_decision(decision, false, None);
                 Some(0)
             }
-            APP_SETTINGS_MESSAGE => {
-                let settings = Box::from_raw(lparam as *mut Settings);
-                match self.engine.set_settings(*settings) {
-                    Ok(decision) => {
-                        self.apply_decision(decision, false, None);
-                        let settings = self.settings().clone();
-                        self.overlay.tick(&settings);
-                    }
-                    Err(error) => show_error(&error.to_string()),
-                }
-                Some(0)
-            }
             WM_TIMER if wparam == TIMER_FRAME => {
                 let settings = self.settings().clone();
                 self.overlay.tick(&settings);
-                Some(0)
-            }
-            WM_DISPLAYCHANGE => {
-                match Overlay::new(self.instance) {
-                    Ok(overlay) => self.overlay = overlay,
-                    Err(error) => show_error(&error),
-                }
                 Some(0)
             }
             WM_TIMER if wparam == TIMER_WATCHDOG => {
@@ -686,13 +638,190 @@ impl App {
                 self.apply_decision(decision, false, None);
                 Some(0)
             }
-            WM_CLOSE | WM_DESTROY => {
-                PostQuitMessage(0);
-                Some(0)
-            }
-            WM_NCCREATE | WM_APP => None,
             _ => None,
         }
+    }
+}
+
+unsafe fn native_input(replay: ReplayInput) -> INPUT {
+    match replay {
+        ReplayInput::ButtonDown(button) | ReplayInput::ButtonUp(button) => {
+            let down = matches!(replay, ReplayInput::ButtonDown(_));
+            let (flags, mouse_data) = match button {
+                Button::Left => (
+                    if down {
+                        MOUSEEVENTF_LEFTDOWN
+                    } else {
+                        MOUSEEVENTF_LEFTUP
+                    },
+                    0,
+                ),
+                Button::Right => (
+                    if down {
+                        MOUSEEVENTF_RIGHTDOWN
+                    } else {
+                        MOUSEEVENTF_RIGHTUP
+                    },
+                    0,
+                ),
+                Button::Middle => (
+                    if down {
+                        MOUSEEVENTF_MIDDLEDOWN
+                    } else {
+                        MOUSEEVENTF_MIDDLEUP
+                    },
+                    0,
+                ),
+                Button::X1 => (
+                    if down {
+                        MOUSEEVENTF_XDOWN
+                    } else {
+                        MOUSEEVENTF_XUP
+                    },
+                    XBUTTON1,
+                ),
+                Button::X2 => (
+                    if down {
+                        MOUSEEVENTF_XDOWN
+                    } else {
+                        MOUSEEVENTF_XUP
+                    },
+                    XBUTTON2,
+                ),
+            };
+            INPUT {
+                r#type: INPUT_MOUSE,
+                Anonymous: windows_sys::Win32::UI::Input::KeyboardAndMouse::INPUT_0 {
+                    mi: MOUSEINPUT {
+                        dx: 0,
+                        dy: 0,
+                        mouseData: u32::from(mouse_data),
+                        dwFlags: flags,
+                        time: 0,
+                        dwExtraInfo: SELF_MARKER,
+                    },
+                },
+            }
+        }
+        ReplayInput::KeyDown(vk) | ReplayInput::KeyUp(vk) => {
+            let down = matches!(replay, ReplayInput::KeyDown(_));
+            let vk = u16::from(vk);
+            let extended = matches!(
+                vk,
+                0xa3 | 0xa5 | 0x5b | 0x5c | 0x2d | 0x2e | 0x24 | 0x23 | 0x21 | 0x22 | 0x25..=0x28
+            );
+            let mut flags = if down { 0 } else { KEYEVENTF_KEYUP };
+            if extended {
+                flags |= KEYEVENTF_EXTENDEDKEY;
+            }
+            INPUT {
+                r#type: INPUT_KEYBOARD,
+                Anonymous: windows_sys::Win32::UI::Input::KeyboardAndMouse::INPUT_0 {
+                    ki: KEYBDINPUT {
+                        wVk: vk,
+                        wScan: MapVirtualKeyW(u32::from(vk), MAPVK_VK_TO_VSC) as u16,
+                        dwFlags: flags,
+                        time: 0,
+                        dwExtraInfo: SELF_MARKER,
+                    },
+                },
+            }
+        }
+    }
+}
+
+pub(super) fn output_debug_string(message: &str) {
+    let text: Vec<u16> = format!("Pingloom input replay: {message}\0")
+        .encode_utf16()
+        .collect();
+    unsafe {
+        windows_sys::Win32::System::Diagnostics::Debug::OutputDebugStringW(text.as_ptr());
+    }
+}
+
+unsafe fn handle_tray_message(event: u32) {
+    let app = APPLICATION;
+    if app.is_null() {
+        return;
+    }
+    if event == WM_LBUTTONUP {
+        (&mut *app).show_settings();
+        return;
+    }
+    if event != WM_RBUTTONUP && event != WM_CONTEXTMENU {
+        return;
+    }
+
+    let hwnd = (*app).hwnd;
+    let menu = CreatePopupMenu();
+    if menu.is_null() {
+        return;
+    }
+    AppendMenuW(menu, MF_STRING, ID_SETTINGS as usize, w!("Settings"));
+    let toggle = if (*app).engine.enabled() {
+        w!("Pause gestures")
+    } else {
+        w!("Resume gestures")
+    };
+    AppendMenuW(menu, MF_STRING, ID_TOGGLE as usize, toggle);
+    AppendMenuW(menu, MF_STRING, ID_QUIT as usize, w!("Quit"));
+    let mut point = POINT { x: 0, y: 0 };
+    GetCursorPos(&mut point);
+    SetForegroundWindow(hwnd);
+    let selected = TrackPopupMenu(
+        menu,
+        TPM_RETURNCMD | TPM_RIGHTBUTTON,
+        point.x,
+        point.y,
+        0,
+        hwnd,
+        null(),
+    );
+    DestroyMenu(menu);
+    match selected {
+        ID_SETTINGS => (&mut *app).show_settings(),
+        ID_TOGGLE => {
+            let app = &mut *app;
+            let decision = app.engine.set_enabled(!app.engine.enabled());
+            app.apply_decision(decision, false, None);
+        }
+        ID_QUIT => PostQuitMessage(0),
+        _ => {}
+    }
+}
+
+unsafe fn apply_settings_message(lparam: LPARAM) {
+    let settings = *Box::from_raw(lparam as *mut Settings);
+    let app = APPLICATION;
+    if app.is_null() {
+        return;
+    }
+    let error = {
+        let app = &mut *app;
+        match app.engine.set_settings(settings) {
+            Ok(decision) => {
+                app.apply_decision(decision, false, None);
+                let settings = app.settings().clone();
+                app.overlay.tick(&settings);
+                None
+            }
+            Err(error) => Some(error.to_string()),
+        }
+    };
+    if let Some(error) = error {
+        show_error(&error);
+    }
+}
+
+unsafe fn handle_display_change() {
+    let app = APPLICATION;
+    if app.is_null() {
+        return;
+    }
+    let instance = (*app).instance;
+    match Overlay::new(instance) {
+        Ok(overlay) => (*app).overlay = overlay,
+        Err(error) => show_error(&error),
     }
 }
 
@@ -702,21 +831,62 @@ unsafe extern "system" fn main_proc(
     wparam: WPARAM,
     lparam: LPARAM,
 ) -> LRESULT {
-    let app = APPLICATION;
-    if !app.is_null() {
-        let app = &mut *app;
-        if app.hwnd.is_null() && message == WM_NCCREATE {
-            app.hwnd = hwnd;
-            SetWindowLongPtrW(hwnd, GWLP_USERDATA, app as *mut App as isize);
-        }
-        if let Some(result) = app.handle_message(message, wparam, lparam) {
-            return result;
-        }
+    if message == WM_NCCREATE {
+        let create = &*(lparam as *const CREATESTRUCTW);
+        SetWindowLongPtrW(hwnd, GWLP_USERDATA, create.lpCreateParams as isize);
+        return DefWindowProcW(hwnd, message, wparam, lparam);
     }
-    DefWindowProcW(hwnd, message, wparam, lparam)
+    if message == WM_CLOSE || message == WM_DESTROY {
+        PostQuitMessage(0);
+        return 0;
+    }
+    if SettingsWindow::callback_busy() {
+        if defer_during_settings_callback(message, wparam, lparam) {
+            return 0;
+        }
+        return DefWindowProcW(hwnd, message, wparam, lparam);
+    }
+    match message {
+        WM_TRAY => {
+            handle_tray_message(lparam as u32);
+            0
+        }
+        APP_SETTINGS_MESSAGE => {
+            apply_settings_message(lparam);
+            0
+        }
+        WM_DISPLAYCHANGE => {
+            handle_display_change();
+            0
+        }
+        WM_REPLAY_FAILURE => {
+            show_error("Windows could not replay one or more inputs. Gestures have been paused; use the tray to resume.");
+            0
+        }
+        WM_SETTINGS_FAILURE => {
+            show_error("Could not create the settings window.");
+            0
+        }
+        _ if matches!(
+            message,
+            WM_INJECT | WM_ACTION | WM_FRAMES | APP_SETTINGS_CLOSED
+        ) || message == WM_TIMER && matches!(wparam, TIMER_FRAME | TIMER_WATCHDOG) =>
+        {
+            let app = APPLICATION;
+            if app.is_null() {
+                return DefWindowProcW(hwnd, message, wparam, lparam);
+            }
+            let result = (&mut *app).handle_message(message, wparam, lparam);
+            result.unwrap_or_else(|| DefWindowProcW(hwnd, message, wparam, lparam))
+        }
+        _ => DefWindowProcW(hwnd, message, wparam, lparam),
+    }
 }
 
 unsafe extern "system" fn mouse_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+    if SettingsWindow::callback_busy() {
+        return CallNextHookEx(null_mut(), code, wparam, lparam);
+    }
     if code != HC_ACTION as i32 {
         return CallNextHookEx(null_mut(), code, wparam, lparam);
     }
@@ -817,6 +987,9 @@ unsafe extern "system" fn mouse_proc(code: i32, wparam: WPARAM, lparam: LPARAM) 
 }
 
 unsafe extern "system" fn key_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+    if SettingsWindow::callback_busy() {
+        return CallNextHookEx(null_mut(), code, wparam, lparam);
+    }
     if code != HC_ACTION as i32 {
         return CallNextHookEx(null_mut(), code, wparam, lparam);
     }
