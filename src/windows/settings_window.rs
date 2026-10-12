@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 use std::ptr::null;
 
+use crate::logic::CallbackGate;
+
 use lolping_core::model::{PingId, Trigger, EMOTE_ASSETS, PING_ASSETS};
 use lolping_core::settings::{Hotkey, Settings, ToggleMods};
 use windows_sys::core::w;
@@ -13,13 +15,18 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     SetWindowLongPtrW, ShowWindow, BN_CLICKED, BS_AUTOCHECKBOX, BS_AUTORADIOBUTTON,
     CBS_DROPDOWNLIST, CB_ADDSTRING, CB_ERR, CB_GETCURSEL, CB_SETCURSEL, CREATESTRUCTW,
     GWLP_USERDATA, MB_ICONWARNING, MB_OK, SM_CXSCREEN, SM_CYSCREEN, SW_HIDE, SW_SHOW,
-    SW_SHOWNORMAL, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_DESTROY, WM_NCCREATE, WNDCLASSW, WS_CAPTION,
-    WS_CHILD, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
+    SW_SHOWNORMAL, WM_CLOSE, WM_COMMAND, WM_NCCREATE, WNDCLASSW, WS_CAPTION, WS_CHILD,
+    WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{GetWindowTextLengthW, SetWindowPos};
 use windows_sys::Win32::UI::WindowsAndMessaging::{SWP_NOACTIVATE, SWP_NOZORDER};
 
-use super::{APP_SETTINGS_CLOSED, APP_SETTINGS_MESSAGE, CONTROL_FONT};
+use super::{
+    flush_deferred_main_messages, post_main_message, APP_SETTINGS_CLOSED, APP_SETTINGS_MESSAGE,
+    CONTROL_FONT,
+};
+
+static SETTINGS_CALLBACK_GATE: CallbackGate = CallbackGate::new();
 
 const PAGE_TRIGGERS: usize = 0;
 const PAGE_PINGS: usize = 1;
@@ -83,7 +90,6 @@ struct Child {
 
 pub struct SettingsWindow {
     hwnd: HWND,
-    parent: HWND,
     path: PathBuf,
     settings: Settings,
     fields: Vec<Field>,
@@ -94,7 +100,6 @@ impl SettingsWindow {
     pub fn new(path: PathBuf) -> Self {
         Self {
             hwnd: null_mut(),
-            parent: null_mut(),
             path,
             settings: Settings::default(),
             fields: Vec::new(),
@@ -106,43 +111,55 @@ impl SettingsWindow {
         self.hwnd
     }
 
-    pub fn open(&mut self, parent: HWND, settings: &Settings, instance: HINSTANCE) -> bool {
-        if !self.hwnd.is_null() {
+    pub fn callback_busy() -> bool {
+        SETTINGS_CALLBACK_GATE.is_held()
+    }
+
+    pub fn open(&mut self, settings: &Settings, instance: HINSTANCE) -> bool {
+        let Some(permit) = SETTINGS_CALLBACK_GATE.enter() else {
+            return false;
+        };
+        let opened = if !self.hwnd.is_null() {
             unsafe {
                 ShowWindow(self.hwnd, SW_SHOW);
                 SetForegroundWindow(self.hwnd);
             }
-            return true;
-        }
-        self.parent = parent;
-        self.settings = settings.clone();
-        self.fields.clear();
-        self.children.clear();
-        let x = (unsafe { GetSystemMetrics(SM_CXSCREEN) } - 880) / 2;
-        let y = (unsafe { GetSystemMetrics(SM_CYSCREEN) } - 740) / 2;
-        unsafe {
-            let hwnd = CreateWindowExW(
-                0,
-                w!("lolping-settings"),
-                w!("lolPing settings"),
-                WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
-                x,
-                y,
-                880,
-                740,
-                null_mut(),
-                null_mut(),
-                instance,
-                (self as *mut Self).cast(),
-            );
-            if hwnd.is_null() {
-                return false;
+            true
+        } else {
+            self.settings = settings.clone();
+            self.fields.clear();
+            self.children.clear();
+            let x = (unsafe { GetSystemMetrics(SM_CXSCREEN) } - 880) / 2;
+            let y = (unsafe { GetSystemMetrics(SM_CYSCREEN) } - 740) / 2;
+            unsafe {
+                let hwnd = CreateWindowExW(
+                    0,
+                    w!("lolping-settings"),
+                    w!("lolPing settings"),
+                    WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
+                    x,
+                    y,
+                    880,
+                    740,
+                    null_mut(),
+                    null_mut(),
+                    instance,
+                    (self as *mut Self).cast(),
+                );
+                if hwnd.is_null() {
+                    false
+                } else {
+                    self.hwnd = hwnd;
+                    self.build(hwnd);
+                    ShowWindow(hwnd, SW_SHOWNORMAL);
+                    SetForegroundWindow(hwnd);
+                    true
+                }
             }
-            self.hwnd = hwnd;
-            ShowWindow(hwnd, SW_SHOWNORMAL);
-            SetForegroundWindow(hwnd);
-        }
-        true
+        };
+        drop(permit);
+        unsafe { flush_deferred_main_messages() };
+        opened
     }
 
     unsafe fn build(&mut self, hwnd: HWND) {
@@ -634,6 +651,26 @@ impl SettingsWindow {
         CheckRadioButton(self.hwnd, BTN_TRIGGER_PAGE, BTN_EMOTE_PAGE, selected);
     }
 
+    unsafe fn destroy_window(&mut self, notify: bool) -> bool {
+        if self.hwnd.is_null() {
+            return true;
+        }
+        let hwnd = self.hwnd;
+        self.hwnd = null_mut();
+        SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
+        if DestroyWindow(hwnd) == 0 {
+            if notify {
+                self.hwnd = hwnd;
+                SetWindowLongPtrW(hwnd, GWLP_USERDATA, self as *mut Self as isize);
+            }
+            return false;
+        }
+        if notify {
+            post_main_message(APP_SETTINGS_CLOSED, 0, 0);
+        }
+        true
+    }
+
     unsafe fn save(&mut self) {
         let mut settings = self.settings.clone();
         for field in &self.fields {
@@ -754,28 +791,33 @@ impl SettingsWindow {
         if let Err(error) = settings.save_atomic(&self.path) {
             return message_box(self.hwnd, &format!("Could not save settings: {error}"));
         }
-        let posted = windows_sys::Win32::UI::WindowsAndMessaging::PostMessageW(
-            self.parent,
-            APP_SETTINGS_MESSAGE,
-            0,
-            Box::into_raw(Box::new(settings)) as LPARAM,
-        );
-        if posted == 0 {
+        let raw_settings = Box::into_raw(Box::new(settings));
+        if !post_main_message(APP_SETTINGS_MESSAGE, 0, raw_settings as LPARAM) {
+            drop(Box::from_raw(raw_settings));
             return message_box(
                 self.hwnd,
                 "Settings were saved but could not be applied until restart.",
             );
         }
-        DestroyWindow(self.hwnd);
+        if !self.destroy_window(true) {
+            message_box(
+                self.hwnd,
+                "The settings were saved, but the settings window could not close.",
+            );
+        }
     }
 }
 
 impl Drop for SettingsWindow {
     fn drop(&mut self) {
-        if !self.hwnd.is_null() {
-            unsafe { DestroyWindow(self.hwnd) };
-            self.hwnd = null_mut();
+        let Some(permit) = SETTINGS_CALLBACK_GATE.enter() else {
+            return;
+        };
+        if !unsafe { self.destroy_window(false) } {
+            super::output_debug_string("could not destroy settings window during shutdown");
         }
+        drop(permit);
+        unsafe { flush_deferred_main_messages() };
     }
 }
 
@@ -804,64 +846,55 @@ unsafe extern "system" fn settings_proc(
     wparam: WPARAM,
     lparam: LPARAM,
 ) -> isize {
-    let pointer = if message == WM_NCCREATE {
+    if message == WM_NCCREATE {
         let create = &*(lparam as *const CREATESTRUCTW);
-        let pointer = create.lpCreateParams as *mut SettingsWindow;
-        SetWindowLongPtrW(hwnd, GWLP_USERDATA, pointer as isize);
-        pointer
-    } else {
-        GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *mut SettingsWindow
-    };
-    if pointer.is_null() {
+        SetWindowLongPtrW(hwnd, GWLP_USERDATA, create.lpCreateParams as isize);
         return DefWindowProcW(hwnd, message, wparam, lparam);
     }
-    let window = &mut *pointer;
-    match message {
-        WM_CREATE => {
-            window.hwnd = hwnd;
-            window.build(hwnd);
-            0
-        }
-        WM_COMMAND if (wparam & 0xffff) as i32 == BTN_TRIGGER_PAGE => {
-            window.show_page(PAGE_TRIGGERS);
-            0
-        }
-        WM_COMMAND if (wparam & 0xffff) as i32 == BTN_PING_PAGE => {
-            window.show_page(PAGE_PINGS);
-            0
-        }
-        WM_COMMAND if (wparam & 0xffff) as i32 == BTN_EMOTE_PAGE => {
-            window.show_page(PAGE_EMOTES);
-            0
-        }
-        WM_COMMAND
-            if (wparam & 0xffff) as i32 == BTN_SAVE && (wparam >> 16) as u32 == BN_CLICKED =>
-        {
-            window.save();
-            0
-        }
-        WM_COMMAND
-            if (wparam & 0xffff) as i32 == BTN_CANCEL && (wparam >> 16) as u32 == BN_CLICKED =>
-        {
-            DestroyWindow(hwnd);
-            0
-        }
-        WM_CLOSE => {
-            DestroyWindow(hwnd);
-            0
-        }
-        WM_DESTROY => {
-            window.hwnd = null_mut();
-            windows_sys::Win32::UI::WindowsAndMessaging::PostMessageW(
-                window.parent,
-                APP_SETTINGS_CLOSED,
-                0,
-                0,
-            );
-            0
-        }
-        _ => DefWindowProcW(hwnd, message, wparam, lparam),
+    let id = (wparam & 0xffff) as i32;
+    let clicked = (wparam >> 16) as u32 == BN_CLICKED;
+    let handled_command = message == WM_COMMAND
+        && clicked
+        && matches!(
+            id,
+            BTN_TRIGGER_PAGE | BTN_PING_PAGE | BTN_EMOTE_PAGE | BTN_SAVE | BTN_CANCEL
+        );
+    if message != WM_CLOSE && !handled_command {
+        return DefWindowProcW(hwnd, message, wparam, lparam);
     }
+    let Some(permit) = SETTINGS_CALLBACK_GATE.enter() else {
+        return 0;
+    };
+    let pointer = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *mut SettingsWindow;
+    if pointer.is_null() {
+        drop(permit);
+        return DefWindowProcW(hwnd, message, wparam, lparam);
+    }
+    let result = {
+        let window = &mut *pointer;
+        if message == WM_CLOSE {
+            if !window.destroy_window(true) {
+                message_box(hwnd, "The settings window could not close.");
+            }
+        } else {
+            match id {
+                BTN_TRIGGER_PAGE => window.show_page(PAGE_TRIGGERS),
+                BTN_PING_PAGE => window.show_page(PAGE_PINGS),
+                BTN_EMOTE_PAGE => window.show_page(PAGE_EMOTES),
+                BTN_SAVE => window.save(),
+                BTN_CANCEL => {
+                    if !window.destroy_window(true) {
+                        message_box(hwnd, "The settings window could not close.");
+                    }
+                }
+                _ => unreachable!(),
+            }
+        }
+        0
+    };
+    drop(permit);
+    flush_deferred_main_messages();
+    result
 }
 
 #[allow(clippy::too_many_arguments)]
