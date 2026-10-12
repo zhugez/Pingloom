@@ -21,10 +21,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 use windows_sys::Win32::UI::WindowsAndMessaging::{GetWindowTextLengthW, SetWindowPos};
 use windows_sys::Win32::UI::WindowsAndMessaging::{SWP_NOACTIVATE, SWP_NOZORDER};
 
-use super::{
-    flush_deferred_main_messages, post_main_message, APP_SETTINGS_CLOSED, APP_SETTINGS_MESSAGE,
-    CONTROL_FONT,
-};
+use super::{queue_main_message, APP_SETTINGS_CLOSED, APP_SETTINGS_MESSAGE, CONTROL_FONT};
 
 static SETTINGS_CALLBACK_GATE: CallbackGate = CallbackGate::new();
 
@@ -158,7 +155,6 @@ impl SettingsWindow {
             }
         };
         drop(permit);
-        unsafe { flush_deferred_main_messages() };
         opened
     }
 
@@ -665,8 +661,9 @@ impl SettingsWindow {
             }
             return false;
         }
-        if notify {
-            post_main_message(APP_SETTINGS_CLOSED, 0, 0);
+        if notify && !queue_main_message(APP_SETTINGS_CLOSED, 0, 0) {
+            super::output_debug_string("could not queue settings resume after closing the window");
+            return false;
         }
         true
     }
@@ -792,7 +789,7 @@ impl SettingsWindow {
             return message_box(self.hwnd, &format!("Could not save settings: {error}"));
         }
         let raw_settings = Box::into_raw(Box::new(settings));
-        if !post_main_message(APP_SETTINGS_MESSAGE, 0, raw_settings as LPARAM) {
+        if !queue_main_message(APP_SETTINGS_MESSAGE, 0, raw_settings as LPARAM) {
             drop(Box::from_raw(raw_settings));
             return message_box(
                 self.hwnd,
@@ -817,7 +814,6 @@ impl Drop for SettingsWindow {
             super::output_debug_string("could not destroy settings window during shutdown");
         }
         drop(permit);
-        unsafe { flush_deferred_main_messages() };
     }
 }
 
@@ -893,7 +889,6 @@ unsafe extern "system" fn settings_proc(
         0
     };
     drop(permit);
-    flush_deferred_main_messages();
     result
 }
 

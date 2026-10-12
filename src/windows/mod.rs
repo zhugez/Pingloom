@@ -4,18 +4,16 @@ mod overlay;
 mod settings_window;
 
 use std::cell::RefCell;
-use std::ffi::c_void;
 use std::mem::{size_of, zeroed};
 use std::path::PathBuf;
 use std::ptr::{null, null_mut};
-use std::sync::atomic::{AtomicPtr, Ordering};
 
 use lolping_core::gesture::{InputDecision, ReplayInput};
 use lolping_core::model::{Action, Button, InputEvent, Point, WheelKind};
 use lolping_core::settings::Settings;
 use lolping_core::GestureEngine;
 
-use super::logic::{insert_replay_batch, ReplayInsertReport};
+use super::logic::{insert_replay_batch, take_deferred, ReplayInsertReport};
 use windows_sys::core::w;
 use windows_sys::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows_sys::Win32::Graphics::Gdi::{
@@ -70,7 +68,6 @@ const ID_TOGGLE: i32 = 2;
 const ID_QUIT: i32 = 3;
 
 static mut APPLICATION: *mut App = null_mut();
-static MAIN_WINDOW: AtomicPtr<c_void> = AtomicPtr::new(null_mut());
 
 #[derive(Clone, Copy)]
 struct DeferredMainMessage {
@@ -184,10 +181,9 @@ unsafe fn run_inner() -> Result<(), String> {
         return Err("could not create the native application message window".into());
     }
     app.hwnd = hwnd;
-    MAIN_WINDOW.store(hwnd, Ordering::Release);
     if let Err(error) = app.install_tray().and_then(|()| app.install_hooks()) {
         app.shutdown();
-        MAIN_WINDOW.store(null_mut(), Ordering::Release);
+        discard_deferred_main_messages();
         APPLICATION = null_mut();
         return Err(error);
     }
@@ -200,7 +196,7 @@ unsafe fn run_inner() -> Result<(), String> {
         if result <= 0 {
             if result < 0 {
                 app.shutdown();
-                MAIN_WINDOW.store(null_mut(), Ordering::Release);
+                discard_deferred_main_messages();
                 APPLICATION = null_mut();
                 return Err("Windows message loop failed".into());
             }
@@ -215,9 +211,11 @@ unsafe fn run_inner() -> Result<(), String> {
             TranslateMessage(&message);
             DispatchMessageW(&message);
         }
+        dispatch_deferred_main_messages();
     }
+    dispatch_deferred_main_messages();
     app.shutdown();
-    MAIN_WINDOW.store(null_mut(), Ordering::Release);
+    discard_deferred_main_messages();
     APPLICATION = null_mut();
     Ok(())
 }
@@ -233,30 +231,60 @@ unsafe fn free_deferred_message(message: DeferredMainMessage) {
     }
 }
 
-pub(crate) unsafe fn post_main_message(message: u32, wparam: WPARAM, lparam: LPARAM) -> bool {
-    if SettingsWindow::callback_busy() {
-        DEFERRED_MAIN_MESSAGES.with(|queue| {
-            queue.borrow_mut().push(DeferredMainMessage {
-                message,
-                wparam,
-                lparam,
-            })
-        });
-        return true;
+pub(crate) fn queue_main_message(message: u32, wparam: WPARAM, lparam: LPARAM) -> bool {
+    if !SettingsWindow::callback_busy() {
+        return false;
     }
-    let hwnd = MAIN_WINDOW.load(Ordering::Acquire);
-    !hwnd.is_null() && PostMessageW(hwnd, message, wparam, lparam) != 0
+    DEFERRED_MAIN_MESSAGES.with(|queue| {
+        queue.borrow_mut().push(DeferredMainMessage {
+            message,
+            wparam,
+            lparam,
+        })
+    });
+    true
 }
 
-pub(crate) unsafe fn flush_deferred_main_messages() {
-    let messages = DEFERRED_MAIN_MESSAGES.with(|queue| std::mem::take(&mut *queue.borrow_mut()));
-    let hwnd = MAIN_WINDOW.load(Ordering::Acquire);
-    for message in messages {
-        if hwnd.is_null()
-            || PostMessageW(hwnd, message.message, message.wparam, message.lparam) == 0
-        {
-            free_deferred_message(message);
+unsafe fn dispatch_deferred_main_messages() {
+    for _ in 0..8 {
+        let messages = DEFERRED_MAIN_MESSAGES.with(|queue| take_deferred(&mut *queue.borrow_mut()));
+        if messages.is_empty() {
+            break;
         }
+        for message in messages {
+            match message.message {
+                APP_SETTINGS_MESSAGE => apply_settings_message(message.lparam),
+                WM_DISPLAYCHANGE => handle_display_change(),
+                WM_REPLAY_FAILURE => show_error("Windows could not replay one or more inputs. Gestures have been paused; use the tray to resume."),
+                WM_SETTINGS_FAILURE => show_error("Could not create the settings window."),
+                WM_INJECT | WM_ACTION | WM_FRAMES | APP_SETTINGS_CLOSED => {
+                    let app = APPLICATION;
+                    if app.is_null() {
+                        free_deferred_message(message);
+                    } else {
+                        let _ = (&mut *app).handle_message(
+                            message.message,
+                            message.wparam,
+                            message.lparam,
+                        );
+                    }
+                }
+                _ => free_deferred_message(message),
+            }
+        }
+    }
+}
+
+unsafe fn discard_deferred_main_messages() {
+    let messages = DEFERRED_MAIN_MESSAGES.with(|queue| take_deferred(&mut *queue.borrow_mut()));
+    if !messages.is_empty() {
+        output_debug_string(&format!(
+            "discarding {} deferred UI messages during shutdown",
+            messages.len()
+        ));
+    }
+    for message in messages {
+        free_deferred_message(message);
     }
 }
 
