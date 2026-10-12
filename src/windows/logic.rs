@@ -53,6 +53,11 @@ pub(crate) struct ReplayInsertReport {
 }
 
 #[cfg(any(windows, test))]
+pub(crate) fn take_deferred<T>(pending: &mut Vec<T>) -> Vec<T> {
+    std::mem::take(pending)
+}
+
+#[cfg(any(windows, test))]
 pub(crate) fn insert_replay_batch(
     replay: &[ReplayInput],
     mut insert: impl FnMut(&[ReplayInput]) -> usize,
@@ -178,6 +183,17 @@ fn any_key(key_down: &mut impl FnMut(u8) -> bool, keys: &[u8]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn deferred_messages_are_taken_once_in_fifo_order() {
+        let mut pending = vec!["settings", "resume", "inject"];
+        assert_eq!(
+            take_deferred(&mut pending),
+            ["settings", "resume", "inject"]
+        );
+        assert!(pending.is_empty());
+        assert!(take_deferred(&mut pending).is_empty());
+    }
 
     #[test]
     fn callback_gate_blocks_reentrant_mutation_until_the_outer_call_returns() {
