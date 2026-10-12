@@ -4,7 +4,7 @@
 
 lolPing-rs places League of Legends pings and emotes on the Windows desktop. Hold a trigger, drag to a wheel slice, and release to show its bundled animation and play its sound. The native runtime is Windows 11 x64 only; this MVP does not read or modify the League process.
 
-> **Validation status:** the Windows implementation has been cross-target checked, but has not yet had a real Windows 11 runtime smoke test. See [Validation](#validation) before relying on it.
+> **Validation status:** Windows MSVC CI passed tests, linting and the portable executable build at `e226800`. A real Windows 11 runtime smoke test is still outstanding. See [Validation](#validation) before relying on it.
 
 ## Use
 
@@ -57,7 +57,11 @@ The bundled League of Legends ping textures and sounds, and built-in emote image
 
 ## Validation
 
-At this handoff, the following local checks passed on Linux: `cargo fmt --all -- --check`, `cargo test` (30 tests), `cargo clippy --all-targets -- -D warnings`, and Windows GNU-target `cargo check`/Clippy. A linked Windows GNU executable build could not run in this environment because `x86_64-w64-mingw32-dlltool` is unavailable. The Windows MSVC CI workflow has been added but has not run for this revision. Neither a cross-target check nor CI compilation substitutes for runtime testing; no Windows 11 smoke test has been completed.
+Local Linux checks passed: `cargo fmt --all -- --check`, `cargo test` (30 tests), `cargo clippy --all-targets -- -D warnings`, and Windows GNU-target `cargo check`/Clippy. Local GNU linking was blocked by missing `x86_64-w64-mingw32-dlltool`.
+
+[Windows MSVC CI run 38288245814](https://github.com/zhugez/lolping-rs/actions/runs/38288245814) passed formatting, Windows-target tests, Clippy, the release executable build and artifact upload for source commit `e2268008e31ccc0e92baffff2e2dfc0602fb3c23`. The [portable artifact](https://github.com/zhugez/lolping-rs/actions/runs/38288245814/artifacts/11764093798) contains `lolping.exe` (60,136,960 bytes), verified as a PE32+ x86-64 Windows GUI executable; it expires on 2026-10-26 and requires access to this private repository. Executable SHA-256: `0aaf68c42ae5b1a8322dfa382b29ca9206c508a53ebd1e59ffbc8e892b9a2a4e`.
+
+The executable was not run. Neither cross-target checking nor CI compilation substitutes for runtime testing; no Windows 11 desktop smoke test has been completed.
 
 Before treating the desktop runtime as verified, test on Windows 11 x64:
 
