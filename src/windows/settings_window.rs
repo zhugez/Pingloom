@@ -2478,8 +2478,8 @@ unsafe fn draw_preview_image(
         (window_color >> 16) as u8,
     ];
     let mut bgra = Vec::with_capacity(image.as_raw().len());
-    for pixel in image.as_raw().chunks_exact(4) {
-        let rgb = composite_rgba_over_rgb([pixel[0], pixel[1], pixel[2], pixel[3]], background);
+    for pixel in image.as_raw().as_chunks::<4>().0 {
+        let rgb = composite_rgba_over_rgb(*pixel, background);
         bgra.extend_from_slice(&[rgb[2], rgb[1], rgb[0], 0]);
     }
     let info = BITMAPINFO {

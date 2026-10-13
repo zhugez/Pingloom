@@ -502,13 +502,11 @@ fn candidate_field(v: &serde_json::Value) -> Option<String> {
         .iter()
         .map(|p| serde_json::to_value(p.id).unwrap().as_str().unwrap().into())
         .collect();
-    for field in ["click_ping_id"] {
-        if v.get(field)
-            .and_then(serde_json::Value::as_str)
-            .is_some_and(|id| !ping_ids.iter().any(|valid| valid == id))
-        {
-            return Some(field.into());
-        }
+    if v.get("click_ping_id")
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|id| !ping_ids.iter().any(|valid| valid == id))
+    {
+        return Some("click_ping_id".into());
     }
     if let Some(a) = v.get("wheel").and_then(serde_json::Value::as_array) {
         for (i, id) in a.iter().enumerate() {
@@ -520,13 +518,11 @@ fn candidate_field(v: &serde_json::Value) -> Option<String> {
             }
         }
     }
-    for field in ["click_emote_id"] {
-        if v.get(field)
-            .and_then(serde_json::Value::as_str)
-            .is_some_and(|id| !EMOTE_ASSETS.contains(&id))
-        {
-            return Some(field.into());
-        }
+    if v.get("click_emote_id")
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|id| !EMOTE_ASSETS.contains(&id))
+    {
+        return Some("click_emote_id".into());
     }
     if let Some(a) = v.get("emote_wheel").and_then(serde_json::Value::as_array) {
         for (i, id) in a.iter().enumerate() {
