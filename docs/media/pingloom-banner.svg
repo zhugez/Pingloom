@@ -1,0 +1,88 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 280" width="960" height="280">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFF5F5" />
+      <stop offset="50%" stop-color="#FCEDED" />
+      <stop offset="100%" stop-color="#F7E6E8" />
+    </linearGradient>
+    <linearGradient id="brandGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#4A4A4A" />
+      <stop offset="100%" stop-color="#2D2D2D" />
+    </linearGradient>
+    <linearGradient id="wheelGlow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFDFD" />
+      <stop offset="100%" stop-color="#F7D6D0" />
+    </linearGradient>
+    <filter id="subtleShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#4A4A4A" flood-opacity="0.08" />
+    </filter>
+  </defs>
+
+  <!-- Background card -->
+  <rect width="960" height="280" rx="16" fill="url(#bg)" stroke="#E2B4BD" stroke-width="1.5" />
+
+  <!-- Decorative subtle background grid elements -->
+  <circle cx="175" cy="140" r="126" fill="none" stroke="#E2B4BD" stroke-width="1" stroke-dasharray="4 6" opacity="0.6" />
+  <circle cx="175" cy="140" r="114" fill="none" stroke="#F7D6D0" stroke-width="1" opacity="0.8" />
+
+  <!-- 8-slice tactile wheel group -->
+  <g filter="url(#subtleShadow)">
+    <path d="M 161.32 102.41 L 141.48 47.91 A 98 98 0 0 1 208.52 47.91 L 188.68 102.41 A 40 40 0 0 0 161.32 102.41 Z" fill="#F7D6D0" stroke="#E2B4BD" stroke-width="1.5" opacity="0.92" />
+    <path d="M 191.90 103.75 L 216.42 51.18 A 98 98 0 0 1 263.82 98.58 L 211.25 123.10 A 40 40 0 0 0 191.90 103.75 Z" fill="#FBE3DE" stroke="#E2B4BD" stroke-width="1.5" opacity="0.92" />
+    <path d="M 212.59 126.32 L 267.09 106.48 A 98 98 0 0 1 267.09 173.52 L 212.59 153.68 A 40 40 0 0 0 212.59 126.32 Z" fill="#E2B4BD" stroke="#E2B4BD" stroke-width="1.5" opacity="0.92" />
+    <path d="M 211.25 156.90 L 263.82 181.42 A 98 98 0 0 1 216.42 228.82 L 191.90 176.25 A 40 40 0 0 0 211.25 156.90 Z" fill="#F7D6D0" stroke="#E2B4BD" stroke-width="1.5" opacity="0.92" />
+    <path d="M 188.68 177.59 L 208.52 232.09 A 98 98 0 0 1 141.48 232.09 L 161.32 177.59 A 40 40 0 0 0 188.68 177.59 Z" fill="#F5CED6" stroke="#E2B4BD" stroke-width="1.5" opacity="0.92" />
+    <path d="M 158.10 176.25 L 133.58 228.82 A 98 98 0 0 1 86.18 181.42 L 138.75 156.90 A 40 40 0 0 0 158.10 176.25 Z" fill="#E2B4BD" stroke="#E2B4BD" stroke-width="1.5" opacity="0.92" />
+    <path d="M 137.41 153.68 L 82.91 173.52 A 98 98 0 0 1 82.91 106.48 L 137.41 126.32 A 40 40 0 0 0 137.41 153.68 Z" fill="#FBE3DE" stroke="#E2B4BD" stroke-width="1.5" opacity="0.92" />
+    <path d="M 138.75 123.10 L 86.18 98.58 A 98 98 0 0 1 133.58 51.18 L 158.10 103.75 A 40 40 0 0 0 138.75 123.10 Z" fill="#F7D6D0" stroke="#E2B4BD" stroke-width="1.5" opacity="0.92" />
+    <!-- Slice node markers -->
+    <circle cx="175.00" cy="71.00" r="6" fill="#4A4A4A" opacity="0.75" />
+    <circle cx="223.79" cy="91.21" r="6" fill="#4A4A4A" opacity="0.75" />
+    <circle cx="244.00" cy="140.00" r="6" fill="#4A4A4A" opacity="0.75" />
+    <circle cx="223.79" cy="188.79" r="6" fill="#4A4A4A" opacity="0.75" />
+    <circle cx="175.00" cy="209.00" r="6" fill="#4A4A4A" opacity="0.75" />
+    <circle cx="126.21" cy="188.79" r="6" fill="#4A4A4A" opacity="0.75" />
+    <circle cx="106.00" cy="140.00" r="6" fill="#4A4A4A" opacity="0.75" />
+    <circle cx="126.21" cy="91.21" r="6" fill="#4A4A4A" opacity="0.75" />
+    <!-- Center cancel zone -->
+    <circle cx="175" cy="140" r="32" fill="url(#wheelGlow)" stroke="#E2B4BD" stroke-width="2" />
+    <!-- Center crosshair / cancel motif -->
+    <circle cx="175" cy="140" r="14" fill="none" stroke="#4A4A4A" stroke-width="1.5" stroke-dasharray="3 3" opacity="0.6" />
+    <line x1="175" y1="130" x2="175" y2="150" stroke="#4A4A4A" stroke-width="2" stroke-linecap="round" opacity="0.75" />
+    <line x1="165" y1="140" x2="185" y2="140" stroke="#4A4A4A" stroke-width="2" stroke-linecap="round" opacity="0.75" />
+  </g>
+
+  <!-- Title & Branding Text -->
+  <g font-family=""Plus Jakarta Sans", Segoe UI, -apple-system, BlinkMacSystemFont, sans-serif">
+    <!-- Top badge -->
+    <rect x="330" y="48" width="168" height="26" rx="13" fill="#FFF5F5" stroke="#E2B4BD" stroke-width="1.2" />
+    <circle cx="344" cy="61" r="4.5" fill="#0067b8" />
+    <text x="356" y="65.5" font-size="11.5" font-weight="600" fill="#4A4A4A" letter-spacing="0.5">WINDOWS 11 UTILITY</text>
+
+    <!-- Main Title -->
+    <text x="330" y="118" font-size="44" font-weight="800" fill="url(#brandGrad)" letter-spacing="-0.5">Pingloom</text>
+
+    <!-- Tagline -->
+    <text x="330" y="152" font-size="16" font-weight="500" fill="#4A4A4A" opacity="0.9">Desktop pings and emotes placed through a radial gesture</text>
+    <text x="330" y="174" font-size="13" font-weight="400" fill="#666666">Independent Win32 overlay &amp; hooks • Bundled Tauri 2 + Svelte 5 Settings</text>
+
+    <!-- Pill Badges -->
+    <g transform="translate(330, 198)">
+      <!-- Pill 1 -->
+      <rect x="0" y="0" width="138" height="30" rx="8" fill="#FFF5F5" stroke="#E2B4BD" stroke-width="1.2" />
+      <text x="14" y="19" font-size="12" font-weight="600" fill="#4A4A4A">8-Slice Radial Wheel</text>
+
+      <!-- Pill 2 -->
+      <rect x="148" y="0" width="144" height="30" rx="8" fill="#FFF5F5" stroke="#E2B4BD" stroke-width="1.2" />
+      <text x="162" y="19" font-size="12" font-weight="600" fill="#4A4A4A">Native Win32 Overlay</text>
+
+      <!-- Pill 3 -->
+      <rect x="302" y="0" width="128" height="30" rx="8" fill="#FFF5F5" stroke="#E2B4BD" stroke-width="1.2" />
+      <text x="316" y="19" font-size="12" font-weight="600" fill="#4A4A4A">Zero Game Hooking</text>
+
+      <!-- Pill 4 -->
+      <rect x="440" y="0" width="126" height="30" rx="8" fill="#F7D6D0" stroke="#E2B4BD" stroke-width="1.2" />
+      <text x="454" y="19" font-size="12" font-weight="600" fill="#4A4A4A">Pastel Aesthetic</text>
+    </g>
+  </g>
+</svg>

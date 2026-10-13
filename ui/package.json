@@ -1,0 +1,28 @@
+{
+  "name": "pingloom-settings",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "test": "tsx --test src/lib/settings.test.ts"
+  },
+  "dependencies": {
+    "@lucide/svelte": "^1.55.0",
+    "@tauri-apps/api": "^2.12.3",
+    "svelte": "^5.57.2"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^7.3.1",
+    "@types/node": "^22.19.11",
+    "@tailwindcss/vite": "^4.3.3",
+    "daisyui": "^5.7.47",
+    "svelte-check": "^4.7.6",
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.15",
+    "typescript": "~5.9.3",
+    "vite": "^8.3.4"
+  }
+}
