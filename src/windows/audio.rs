@@ -13,7 +13,7 @@ impl Audio {
     pub fn new() -> Self {
         let (sender, receiver) = mpsc::channel::<(String, f32)>();
         thread::Builder::new()
-            .name("lolping-audio".into())
+            .name("pingloom-audio".into())
             .spawn(move || {
                 let Ok((_stream, handle)) = OutputStream::try_default() else {
                     return;

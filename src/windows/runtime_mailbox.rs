@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::Duration;
 
-use lolping_core::settings::Settings;
+use pingloom_core::settings::Settings;
 use windows_sys::Win32::Foundation::HWND;
 use windows_sys::Win32::UI::WindowsAndMessaging::PostMessageW;
 

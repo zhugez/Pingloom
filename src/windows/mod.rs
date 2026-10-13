@@ -11,10 +11,10 @@ use std::mem::{size_of, zeroed};
 use std::path::PathBuf;
 use std::ptr::{null, null_mut};
 
-use lolping_core::gesture::{InputDecision, ReplayInput};
-use lolping_core::model::{Action, Button, InputEvent, Point, Trigger, WheelKind};
-use lolping_core::settings::Settings;
-use lolping_core::GestureEngine;
+use pingloom_core::gesture::{InputDecision, ReplayInput};
+use pingloom_core::model::{Action, Button, InputEvent, Point, Trigger, WheelKind};
+use pingloom_core::settings::Settings;
+use pingloom_core::GestureEngine;
 
 use super::logic::{insert_replay_batch, settings_issue, take_deferred, ReplayInsertReport};
 use windows_sys::core::w;
@@ -199,7 +199,7 @@ unsafe fn run_inner(
     PeekMessageW(&mut zeroed(), null_mut(), WM_APP, WM_APP, 0); // ensure the hook thread has a message queue
     let hwnd = CreateWindowExW(
         WS_EX_TOOLWINDOW,
-        w!("lolping-main"),
+        w!("pingloom-main"),
         w!("Pingloom"),
         WS_OVERLAPPED,
         0,
@@ -364,7 +364,7 @@ fn safe_custom_trigger(trigger: Trigger) -> bool {
 
 fn settings_path() -> Result<PathBuf, String> {
     let roaming = std::env::var_os("APPDATA").ok_or("APPDATA is not available")?;
-    Ok(lolping_core::settings::resolve_settings_path(roaming))
+    Ok(pingloom_core::settings::resolve_settings_path(roaming))
 }
 
 unsafe fn register_main(instance: HINSTANCE) -> Result<(), String> {
@@ -378,7 +378,7 @@ unsafe fn register_main(instance: HINSTANCE) -> Result<(), String> {
         hCursor: null_mut(),
         hbrBackground: null_mut(),
         lpszMenuName: null(),
-        lpszClassName: w!("lolping-main"),
+        lpszClassName: w!("pingloom-main"),
     };
     if RegisterClassW(&class) == 0 {
         return Err("could not register application message window".into());
@@ -639,7 +639,7 @@ impl App {
             let hwnd = self.hwnd as usize;
             let slug = slug.clone();
             std::thread::Builder::new()
-                .name("lolping-emote-decode".into())
+                .name("pingloom-emote-decode".into())
                 .spawn(move || {
                     let hwnd = hwnd as HWND;
                     let Some(frames) = overlay::decode_emote(&slug) else {

@@ -2,8 +2,8 @@ use super::runtime_mailbox::{
     wait_reply, wait_save_reply, wait_suspend_reply, OwnerError, OwnerMailbox, RuntimeStatus,
 };
 use crate::settings_lifecycle::Lifecycle;
-use lolping_core::model::{EMOTE_ASSETS, PING_ASSETS};
-use lolping_core::settings::Settings;
+use pingloom_core::model::{EMOTE_ASSETS, PING_ASSETS};
+use pingloom_core::settings::Settings;
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Manager, Runtime, WebviewWindow};
 
@@ -594,7 +594,7 @@ pub(crate) fn install<R: tauri::Runtime>(
 
 pub(crate) fn spawn_watchdog(app: AppHandle, state: Arc<DesktopSettingsState>) {
     std::thread::Builder::new()
-        .name("lolping-settings-watchdog".into())
+        .name("pingloom-settings-watchdog".into())
         .spawn(move || loop {
             std::thread::sleep(std::time::Duration::from_secs(1));
             drive_resume(Arc::clone(&state));

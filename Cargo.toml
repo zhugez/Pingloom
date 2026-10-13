@@ -5,7 +5,7 @@ edition = "2021"
 license = "MIT"
 
 [lib]
-name = "lolping_core"
+name = "pingloom_core"
 path = "src/lib.rs"
 
 [[bin]]

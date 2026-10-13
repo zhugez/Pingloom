@@ -1,8 +1,8 @@
 # Issue tracker: GitHub
 
-Issues and specs live in GitHub Issues for `zhugez/lolping-rs`.
+Issues and specs live in GitHub Issues for `zhugez/pingloom`.
 Use the `gh` CLI from this clone; it infers the repo from the remote.
-Outside the clone, pass `--repo zhugez/lolping-rs`.
+Outside the clone, pass `--repo zhugez/pingloom`.
 
 ## Operations
 

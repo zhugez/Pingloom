@@ -9,9 +9,9 @@ use crate::logic::{
     wheel_wedge_outline,
 };
 use image::RgbaImage;
-use lolping_core::model::{PingId, WheelKind};
-use lolping_core::settings::Settings;
-use lolping_core::{geometry::pick_slice, Point};
+use pingloom_core::model::{PingId, WheelKind};
+use pingloom_core::settings::Settings;
+use pingloom_core::{geometry::pick_slice, Point};
 use webp_animation::Decoder;
 use windows_sys::core::w;
 use windows_sys::Win32::Foundation::{HINSTANCE, HWND, LPARAM, POINT, SIZE};
@@ -176,7 +176,7 @@ pub fn register(instance: HINSTANCE) -> Result<(), String> {
         hCursor: null_mut(),
         hbrBackground: null_mut(),
         lpszMenuName: null(),
-        lpszClassName: w!("lolping-overlay"),
+        lpszClassName: w!("pingloom-overlay"),
     };
     if unsafe { RegisterClassW(&class) } == 0 {
         return Err("could not register overlay window class".into());
@@ -204,7 +204,7 @@ impl Overlay {
                     | WS_EX_TRANSPARENT
                     | WS_EX_TOOLWINDOW
                     | WS_EX_NOACTIVATE,
-                w!("lolping-overlay"),
+                w!("pingloom-overlay"),
                 w!("Pingloom overlay"),
                 WS_POPUP,
                 left,

@@ -2,9 +2,9 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 
 #[cfg(any(windows, test))]
-use lolping_core::gesture::ReplayInput;
-use lolping_core::model::{Button, Trigger};
-use lolping_core::settings::{Settings, ToggleMods};
+use pingloom_core::gesture::ReplayInput;
+use pingloom_core::model::{Button, Trigger};
+use pingloom_core::settings::{Settings, ToggleMods};
 
 #[cfg(any(windows, test))]
 const MAX_REPLAY_INSERT_ATTEMPTS: usize = 3;
@@ -556,10 +556,13 @@ mod tests {
             .unwrap();
         assert!(top.1 < -219.0);
         assert_eq!(
-            lolping_core::geometry::pick_slice(0.0, -220.0, 0.0),
+            pingloom_core::geometry::pick_slice(0.0, -220.0, 0.0),
             Some(0)
         );
-        assert_eq!(lolping_core::geometry::pick_slice(220.0, 0.0, 0.0), Some(2));
+        assert_eq!(
+            pingloom_core::geometry::pick_slice(220.0, 0.0, 0.0),
+            Some(2)
+        );
         assert!(wheel_wedge_outline(8, 86.0, 220.0).is_none());
         assert!(wheel_wedge_outline(0, 220.0, 86.0).is_none());
     }

@@ -2,7 +2,7 @@
 
 ### Issue tracker
 
-Issues live in GitHub Issues for `zhugez/lolping-rs`. See `docs/agents/issue-tracker.md`.
+Issues live in GitHub Issues for `zhugez/pingloom`. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

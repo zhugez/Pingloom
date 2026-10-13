@@ -36,7 +36,7 @@ fn main() {
             let app_handle = app.handle().clone();
             let owner_state = Arc::clone(&state_setup);
             let join = std::thread::Builder::new()
-                .name("lolping-win32-owner".into())
+                .name("pingloom-win32-owner".into())
                 .spawn(move || {
                     let result =
                         windows::run(owner_mailbox, ready_tx, app_handle.clone(), owner_state);
@@ -59,7 +59,7 @@ fn main() {
             let app_handle = app.handle().clone();
             let owner_done = Arc::clone(&done_setup);
             std::thread::Builder::new()
-                .name("lolping-owner-watch".into())
+                .name("pingloom-owner-watch".into())
                 .spawn(move || {
                     let _ = finished_rx.recv();
                     owner_done.store(true, Ordering::Release);

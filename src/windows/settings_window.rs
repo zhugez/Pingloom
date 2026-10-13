@@ -10,8 +10,8 @@ use crate::logic::{
     UiRect,
 };
 
-use lolping_core::model::{PingId, Trigger, WheelKind, EMOTE_ASSETS, PING_ASSETS};
-use lolping_core::settings::{Hotkey, Settings, ToggleMods};
+use pingloom_core::model::{PingId, Trigger, WheelKind, EMOTE_ASSETS, PING_ASSETS};
+use pingloom_core::settings::{Hotkey, Settings, ToggleMods};
 use windows_sys::core::w;
 use windows_sys::Win32::Foundation::{HINSTANCE, HWND, LPARAM, POINT, RECT, WPARAM};
 use windows_sys::Win32::Graphics::Gdi::{
@@ -236,7 +236,7 @@ impl SettingsWindow {
             let hwnd = unsafe {
                 CreateWindowExW(
                     0,
-                    w!("lolping-settings"),
+                    w!("pingloom-settings"),
                     w!("Pingloom settings"),
                     WS_OVERLAPPEDWINDOW | WS_VSCROLL,
                     rect.left,
@@ -768,7 +768,7 @@ impl SettingsWindow {
     unsafe fn create_viewport(&mut self, parent: HWND) -> HWND {
         self.viewport = CreateWindowExW(
             WS_EX_CONTROLPARENT,
-            w!("lolping-settings-viewport"),
+            w!("pingloom-settings-viewport"),
             w!(""),
             WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
             0,
@@ -2190,7 +2190,7 @@ pub fn register(instance: HINSTANCE) -> Result<(), String> {
         hCursor: unsafe { LoadCursorW(null_mut(), w!("IDC_ARROW")) },
         hbrBackground: (COLOR_WINDOW + 1) as _,
         lpszMenuName: null(),
-        lpszClassName: w!("lolping-settings-viewport"),
+        lpszClassName: w!("pingloom-settings-viewport"),
     };
     if unsafe { RegisterClassW(&viewport_class) } == 0 {
         return Err("could not register the settings content viewport class".into());
@@ -2205,7 +2205,7 @@ pub fn register(instance: HINSTANCE) -> Result<(), String> {
         hCursor: unsafe { LoadCursorW(null_mut(), w!("IDC_ARROW")) },
         hbrBackground: (COLOR_WINDOW + 1) as _,
         lpszMenuName: null(),
-        lpszClassName: w!("lolping-settings"),
+        lpszClassName: w!("pingloom-settings"),
     };
     if unsafe { RegisterClassW(&class) } == 0 {
         return Err("could not register settings window class".into());
