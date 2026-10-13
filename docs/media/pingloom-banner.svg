@@ -53,7 +53,7 @@
   </g>
 
   <!-- Title & Branding Text -->
-  <g font-family=""Plus Jakarta Sans", Segoe UI, -apple-system, BlinkMacSystemFont, sans-serif">
+  <g font-family="'Plus Jakarta Sans', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif">
     <!-- Top badge -->
     <rect x="330" y="48" width="168" height="26" rx="13" fill="#FFF5F5" stroke="#E2B4BD" stroke-width="1.2" />
     <circle cx="344" cy="61" r="4.5" fill="#0067b8" />
