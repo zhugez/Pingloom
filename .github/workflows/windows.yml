@@ -13,6 +13,24 @@ jobs:
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
+      - name: Setup Node.js 22 (build-time only)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: ui/package-lock.json
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: ui
+      - name: Check frontend types
+        run: npm run check
+        working-directory: ui
+      - name: Test frontend logic
+        run: npm test
+        working-directory: ui
+      - name: Build frontend bundle
+        run: npm run build
+        working-directory: ui
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc

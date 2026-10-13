@@ -4,6 +4,10 @@ use std::ptr::{null, null_mut};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use crate::logic::{
+    caption_mask_usable_after_flush, composite_premultiplied_bgra, wheel_boundary_angle_degrees,
+    wheel_wedge_outline,
+};
 use image::RgbaImage;
 use pingloom_core::model::{PingId, WheelKind};
 use pingloom_core::settings::Settings;
@@ -13,8 +17,10 @@ use windows_sys::core::w;
 use windows_sys::Win32::Foundation::{HINSTANCE, HWND, LPARAM, POINT, SIZE};
 use windows_sys::Win32::Graphics::Gdi::BLENDFUNCTION;
 use windows_sys::Win32::Graphics::Gdi::{
-    CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, GetDC, ReleaseDC, SelectObject,
-    BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HBITMAP, HDC, HGDIOBJ,
+    CreateCompatibleDC, CreateDIBSection, CreateFontW, DeleteDC, DeleteObject, DrawTextW, GdiFlush,
+    GetDC, GetStockObject, ReleaseDC, SelectObject, SetBkMode, SetTextColor, BITMAPINFO,
+    BITMAPINFOHEADER, BI_RGB, DEFAULT_GUI_FONT, DIB_RGB_COLORS, DT_CENTER, DT_NOPREFIX,
+    DT_SINGLELINE, DT_VCENTER, FW_SEMIBOLD, HBITMAP, HDC, HFONT, HGDIOBJ, TRANSPARENT,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, RegisterClassW, SetWindowPos, ShowWindow, UpdateLayeredWindow,
@@ -53,12 +59,94 @@ struct EmoteFx {
     frames: Option<Vec<AnimatedFrame>>,
 }
 
+struct CaptionMask {
+    dc: HDC,
+    bitmap: HBITMAP,
+    old_bitmap: HGDIOBJ,
+    pixels: *mut u8,
+    width: i32,
+    height: i32,
+    line_height: i32,
+    usable: bool,
+}
+
 struct WheelFx {
     kind: WheelKind,
     origin: Point,
     pointer: Point,
     scale: f64,
     hot: Option<usize>,
+    caption_font: HFONT,
+    caption_mask: Option<CaptionMask>,
+}
+
+impl CaptionMask {
+    unsafe fn new(template: HDC, scale: f64) -> Option<Self> {
+        let width = ((WHEEL_INNER * 2.0 - 12.0) * scale).round().max(1.0) as i32;
+        let line_height = (16.0 * scale).round().max(1.0) as i32;
+        let height = line_height.checked_mul(7)?;
+        let bytes = usize::try_from(width)
+            .ok()?
+            .checked_mul(usize::try_from(height).ok()?)?
+            .checked_mul(4)?;
+        let image_size = u32::try_from(bytes).ok()?;
+        let dc = CreateCompatibleDC(template);
+        if dc.is_null() {
+            return None;
+        }
+        let info = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: width,
+                biHeight: -height,
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: BI_RGB,
+                biSizeImage: image_size,
+                biXPelsPerMeter: 0,
+                biYPelsPerMeter: 0,
+                biClrUsed: 0,
+                biClrImportant: 0,
+            },
+            bmiColors: [zeroed()],
+        };
+        let mut raw_pixels = null_mut();
+        let bitmap = CreateDIBSection(dc, &info, DIB_RGB_COLORS, &mut raw_pixels, null_mut(), 0);
+        if bitmap.is_null() || raw_pixels.is_null() {
+            if !bitmap.is_null() {
+                DeleteObject(bitmap as HGDIOBJ);
+            }
+            DeleteDC(dc);
+            return None;
+        }
+        let old_bitmap = SelectObject(dc, bitmap as HGDIOBJ);
+        if old_bitmap.is_null() {
+            DeleteObject(bitmap as HGDIOBJ);
+            DeleteDC(dc);
+            return None;
+        }
+        Some(Self {
+            dc,
+            bitmap,
+            old_bitmap,
+            pixels: raw_pixels.cast(),
+            width,
+            height,
+            line_height,
+            usable: true,
+        })
+    }
+}
+
+impl Drop for CaptionMask {
+    fn drop(&mut self) {
+        unsafe {
+            GdiFlush();
+            SelectObject(self.dc, self.old_bitmap);
+            DeleteObject(self.bitmap as HGDIOBJ);
+            DeleteDC(self.dc);
+        }
+    }
 }
 
 pub struct Overlay {
@@ -197,16 +285,39 @@ impl Overlay {
     }
 
     pub fn wheel_open(&mut self, kind: WheelKind, origin: Point, scale: f64) {
+        self.wheel_close();
+        let scale = if scale.is_finite() && scale > 0.0 {
+            scale
+        } else {
+            1.0
+        };
+        let face: Vec<u16> = "Segoe UI\0".encode_utf16().collect();
+        let caption_font = unsafe {
+            CreateFontW(
+                -((14.0 * scale).round() as i32).max(1),
+                0,
+                0,
+                0,
+                FW_SEMIBOLD as i32,
+                0,
+                0,
+                0,
+                windows_sys::Win32::Graphics::Gdi::DEFAULT_CHARSET as u32,
+                0,
+                0,
+                0,
+                0,
+                face.as_ptr(),
+            )
+        };
         self.wheel = Some(WheelFx {
             kind,
             origin,
             pointer: origin,
-            scale: if scale.is_finite() && scale > 0.0 {
-                scale
-            } else {
-                1.0
-            },
+            scale,
             hot: None,
+            caption_font,
+            caption_mask: unsafe { CaptionMask::new(self.dc, scale) },
         });
     }
 
@@ -230,7 +341,11 @@ impl Overlay {
     }
 
     pub fn wheel_close(&mut self) {
-        self.wheel = None;
+        if let Some(wheel) = self.wheel.take() {
+            if !wheel.caption_font.is_null() {
+                unsafe { DeleteObject(wheel.caption_font as HGDIOBJ) };
+            }
+        }
     }
 
     pub fn wheel_close_if(&mut self, kind: WheelKind, origin: Point) {
@@ -239,7 +354,7 @@ impl Overlay {
             .as_ref()
             .is_some_and(|wheel| wheel.kind == kind && wheel.origin == origin)
         {
-            self.wheel = None;
+            self.wheel_close();
         }
     }
 
@@ -304,20 +419,35 @@ impl Overlay {
                 left: self.left,
                 top: self.top,
             };
-            if let Some(wheel) = &self.wheel {
-                let items: Vec<String> = match wheel.kind {
-                    WheelKind::Ping => settings
-                        .wheel
-                        .iter()
-                        .map(|id| id.asset().icon.to_owned())
-                        .collect(),
-                    WheelKind::Emote => settings.emote_wheel.to_vec(),
+            if let Some(wheel) = &mut self.wheel {
+                let (items, names) = match wheel.kind {
+                    WheelKind::Ping => (
+                        settings
+                            .wheel
+                            .iter()
+                            .map(|id| id.asset().icon.to_owned())
+                            .collect::<Vec<_>>(),
+                        settings
+                            .wheel
+                            .iter()
+                            .map(|id| id.asset().name.to_owned())
+                            .collect::<Vec<_>>(),
+                    ),
+                    WheelKind::Emote => (
+                        settings.emote_wheel.to_vec(),
+                        settings
+                            .emote_wheel
+                            .iter()
+                            .map(|slug| readable_emote_name(slug))
+                            .collect(),
+                    ),
                 };
-                let center = match wheel.kind {
-                    WheelKind::Ping => settings.click_ping_id.asset().icon.to_owned(),
-                    WheelKind::Emote => settings.click_emote_id.clone(),
-                };
-                canvas.draw_wheel(wheel, &items, &center, &mut self.image_cache);
+                canvas.draw_wheel(wheel, &items, &mut self.image_cache);
+                let selected = wheel
+                    .hot
+                    .and_then(|slot| names.get(slot))
+                    .map(String::as_str);
+                draw_wheel_caption(&mut canvas, wheel, selected);
             }
             for ping in &self.pings {
                 let age = now.duration_since(ping.started).as_secs_f64();
@@ -367,6 +497,7 @@ impl Overlay {
 
 impl Drop for Overlay {
     fn drop(&mut self) {
+        self.wheel_close();
         unsafe {
             ShowWindow(self.hwnd, SW_HIDE);
             windows_sys::Win32::UI::WindowsAndMessaging::DestroyWindow(self.hwnd);
@@ -375,6 +506,97 @@ impl Drop for Overlay {
             DeleteDC(self.dc);
         }
     }
+}
+
+unsafe fn draw_wheel_caption(canvas: &mut Canvas<'_>, wheel: &mut WheelFx, selected: Option<&str>) {
+    let Some(mask) = wheel.caption_mask.as_mut() else {
+        return;
+    };
+    if !mask.usable {
+        return;
+    }
+    let bytes = mask.width as usize * mask.height as usize * 4;
+    std::ptr::write_bytes(mask.pixels, 0, bytes);
+    let font = if wheel.caption_font.is_null() {
+        GetStockObject(DEFAULT_GUI_FONT)
+    } else {
+        wheel.caption_font as HGDIOBJ
+    };
+    let old_font = SelectObject(mask.dc, font);
+    let old_mode = SetBkMode(mask.dc, TRANSPARENT as i32);
+    let old_color = SetTextColor(mask.dc, 0x00f8_f8f8);
+    let (title, instruction) = selected.map_or(
+        (
+            "Choose a slice".to_owned(),
+            "Move over an action".to_owned(),
+        ),
+        |name| (format!("Selected: {name}"), "Release to choose".to_owned()),
+    );
+    let title = title
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect::<Vec<_>>();
+    let instruction = instruction
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect::<Vec<_>>();
+    let cancel = "CANCEL\0".encode_utf16().collect::<Vec<_>>();
+    let escape = "Esc / right-click\0".encode_utf16().collect::<Vec<_>>();
+    for (text, line) in [
+        (title.as_ptr(), 0),
+        (instruction.as_ptr(), 1),
+        (cancel.as_ptr(), 5),
+        (escape.as_ptr(), 6),
+    ] {
+        let top = line * mask.line_height;
+        let mut rect = windows_sys::Win32::Foundation::RECT {
+            left: 0,
+            top,
+            right: mask.width,
+            bottom: top + mask.line_height,
+        };
+        DrawTextW(
+            mask.dc,
+            text,
+            -1,
+            &mut rect,
+            DT_CENTER | DT_VCENTER | DT_NOPREFIX | DT_SINGLELINE,
+        );
+    }
+    SetTextColor(mask.dc, old_color);
+    SetBkMode(mask.dc, old_mode);
+    SelectObject(mask.dc, old_font);
+    mask.usable = caption_mask_usable_after_flush(mask.usable, GdiFlush() != 0);
+    if !mask.usable {
+        return;
+    }
+
+    let left = wheel.origin.x - mask.width / 2;
+    let top = wheel.origin.y - mask.line_height * 4;
+    for y in 0..mask.height {
+        for x in 0..mask.width {
+            let index = (y as usize * mask.width as usize + x as usize) * 4;
+            let coverage = (*mask.pixels.add(index))
+                .max(*mask.pixels.add(index + 1))
+                .max(*mask.pixels.add(index + 2));
+            if coverage != 0 {
+                canvas.point(left + x, top + y, [248, 248, 248, coverage]);
+            }
+        }
+    }
+}
+
+fn readable_emote_name(slug: &str) -> String {
+    slug.split('_')
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            let mut chars = part.chars();
+            chars.next().map_or_else(String::new, |first| {
+                first.to_uppercase().collect::<String>() + chars.as_str()
+            })
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 pub fn decode_emote(slug: &str) -> Option<Vec<AnimatedFrame>> {
@@ -423,18 +645,14 @@ impl Canvas<'_> {
             return;
         }
         let index = (y as usize * self.width + x as usize) * 4;
-        let alpha = u32::from(rgba[3]);
-        let inverse = 255 - alpha;
-        self.pixels[index] =
-            ((u32::from(rgba[2]) * alpha + u32::from(self.pixels[index]) * inverse) / 255) as u8;
-        self.pixels[index + 1] = ((u32::from(rgba[1]) * alpha
-            + u32::from(self.pixels[index + 1]) * inverse)
-            / 255) as u8;
-        self.pixels[index + 2] = ((u32::from(rgba[0]) * alpha
-            + u32::from(self.pixels[index + 2]) * inverse)
-            / 255) as u8;
-        self.pixels[index + 3] =
-            (alpha + u32::from(self.pixels[index + 3]) * inverse / 255).min(255) as u8;
+        let destination = [
+            self.pixels[index],
+            self.pixels[index + 1],
+            self.pixels[index + 2],
+            self.pixels[index + 3],
+        ];
+        let blended = composite_premultiplied_bgra(destination, rgba);
+        self.pixels[index..index + 4].copy_from_slice(&blended);
     }
 
     fn circle(&mut self, center: Point, radius: f64, thickness: f64, color: [u8; 4]) {
@@ -447,6 +665,62 @@ impl Canvas<'_> {
                     self.point(center.x + dx, center.y + dy, color);
                 }
             }
+        }
+    }
+
+    fn filled_circle(&mut self, center: Point, radius: i32, color: [u8; 4]) {
+        for dy in -radius..=radius {
+            for dx in -radius..=radius {
+                if f64::from(dx).hypot(f64::from(dy)) <= f64::from(radius) {
+                    self.point(center.x + dx, center.y + dy, color);
+                }
+            }
+        }
+    }
+
+    fn line(&mut self, start: Point, end: Point, thickness: i32, color: [u8; 4]) {
+        let (mut x, mut y) = (start.x, start.y);
+        let dx = (end.x - start.x).abs();
+        let sx = if start.x < end.x { 1 } else { -1 };
+        let dy = -(end.y - start.y).abs();
+        let sy = if start.y < end.y { 1 } else { -1 };
+        let mut error = dx + dy;
+        let radius = (thickness - 1).max(0) / 2;
+        loop {
+            for oy in -radius..=radius {
+                for ox in -radius..=radius {
+                    self.point(x + ox, y + oy, color);
+                }
+            }
+            if x == end.x && y == end.y {
+                break;
+            }
+            let twice = error * 2;
+            if twice >= dy {
+                error += dy;
+                x += sx;
+            }
+            if twice <= dx {
+                error += dx;
+                y += sy;
+            }
+        }
+    }
+
+    fn wedge_outline(&mut self, center: Point, inner: f64, outer: f64, slot: usize, scale: f64) {
+        let Some(points) = wheel_wedge_outline(slot, inner, outer) else {
+            return;
+        };
+        let thickness = (3.0 * scale).round().max(2.0) as i32;
+        let points: Vec<Point> = points
+            .into_iter()
+            .map(|(x, y)| Point::new(center.x + x as i32, center.y + y as i32))
+            .collect();
+        for pair in points.windows(2) {
+            self.line(pair[0], pair[1], thickness, [255, 245, 208, 255]);
+        }
+        if let (Some(first), Some(last)) = (points.first(), points.last()) {
+            self.line(*last, *first, thickness, [255, 245, 208, 255]);
         }
     }
 
@@ -510,7 +784,6 @@ impl Canvas<'_> {
         &mut self,
         wheel: &WheelFx,
         items: &[String],
-        center: &str,
         cache: &mut HashMap<String, Arc<RgbaImage>>,
     ) {
         let scale = wheel.scale;
@@ -524,16 +797,50 @@ impl Canvas<'_> {
                     let slice = pick_slice(f64::from(dx), f64::from(dy), 0.0);
                     let hot = wheel.hot == slice;
                     let color = if hot {
-                        [170, 164, 148, 175]
+                        [221, 206, 154, 238]
                     } else {
-                        [43, 49, 55, 200]
+                        [35, 42, 50, 218]
                     };
                     self.point(wheel.origin.x + dx, wheel.origin.y + dy, color);
                 }
             }
         }
-        self.circle(wheel.origin, inner, 3.0 * scale, [200, 170, 110, 230]);
-        self.circle(wheel.origin, outer, 2.0 * scale, [150, 130, 90, 180]);
+        self.circle(wheel.origin, inner, 3.0 * scale, [232, 222, 198, 245]);
+        self.circle(wheel.origin, outer, 2.0 * scale, [222, 226, 232, 220]);
+        for boundary in 0..8 {
+            let angle = wheel_boundary_angle_degrees(boundary).to_radians();
+            self.line(
+                Point::new(
+                    wheel.origin.x + (angle.cos() * inner) as i32,
+                    wheel.origin.y + (angle.sin() * inner) as i32,
+                ),
+                Point::new(
+                    wheel.origin.x + (angle.cos() * outer) as i32,
+                    wheel.origin.y + (angle.sin() * outer) as i32,
+                ),
+                (1.5 * scale).round().max(1.0) as i32,
+                [220, 225, 232, 180],
+            );
+        }
+        if let Some(slot) = wheel.hot {
+            self.wedge_outline(wheel.origin, inner, outer, slot, scale);
+        }
+        self.filled_circle(wheel.origin, inner.floor() as i32 - 2, [34, 38, 45, 255]);
+        self.circle(wheel.origin, inner - 1.0, 2.5 * scale, [255, 170, 170, 255]);
+        let cross = (11.0 * scale).round() as i32;
+        let cross_y = wheel.origin.y - (12.0 * scale).round() as i32;
+        self.line(
+            Point::new(wheel.origin.x - cross, cross_y - cross),
+            Point::new(wheel.origin.x + cross, cross_y + cross),
+            (4.0 * scale).round().max(3.0) as i32,
+            [255, 137, 137, 255],
+        );
+        self.line(
+            Point::new(wheel.origin.x + cross, cross_y - cross),
+            Point::new(wheel.origin.x - cross, cross_y + cross),
+            (4.0 * scale).round().max(3.0) as i32,
+            [255, 137, 137, 255],
+        );
         for (slot, item) in items.iter().enumerate() {
             let angle = (slot as f64 * 45.0 - 90.0).to_radians();
             let radius = (inner + outer) / 2.0;
@@ -549,6 +856,14 @@ impl Canvas<'_> {
             if let Some(icon) = self.asset(cache, &image_name) {
                 let icon_size =
                     (46.0 * scale * if wheel.hot == Some(slot) { 1.18 } else { 1.0 }) as u32;
+                if wheel.hot == Some(slot) {
+                    self.circle(
+                        center,
+                        f64::from(icon_size) * 0.64,
+                        2.5 * scale,
+                        [255, 245, 208, 255],
+                    );
+                }
                 self.image(
                     &icon,
                     center.x - icon_size as i32 / 2,
@@ -557,21 +872,6 @@ impl Canvas<'_> {
                     1.0,
                 );
             }
-        }
-        let path = if wheel.kind == WheelKind::Ping {
-            format!("textures/{center}.png")
-        } else {
-            format!("emotes/{center}.png")
-        };
-        if let Some(icon) = self.asset(cache, &path) {
-            let size = (56.0 * scale) as u32;
-            self.image(
-                &icon,
-                wheel.origin.x - size as i32 / 2,
-                wheel.origin.y - size as i32 / 2,
-                size,
-                1.0,
-            );
         }
     }
 

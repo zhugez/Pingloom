@@ -1,3 +1,7 @@
 /target/
 /.pi/
+/ui/node_modules/
+/ui/dist/
+/gen/
+/.impeccable/review/
 *.log

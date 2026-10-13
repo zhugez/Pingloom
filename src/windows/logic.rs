@@ -4,10 +4,199 @@ use std::sync::atomic::{AtomicBool, Ordering};
 #[cfg(any(windows, test))]
 use pingloom_core::gesture::ReplayInput;
 use pingloom_core::model::{Button, Trigger};
-use pingloom_core::settings::Settings;
+use pingloom_core::settings::{Settings, ToggleMods};
 
 #[cfg(any(windows, test))]
 const MAX_REPLAY_INSERT_ATTEMPTS: usize = 3;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct UiRect {
+    pub left: i32,
+    pub top: i32,
+    pub right: i32,
+    pub bottom: i32,
+}
+
+impl UiRect {
+    pub fn width(self) -> i32 {
+        self.right - self.left
+    }
+
+    pub fn height(self) -> i32 {
+        self.bottom - self.top
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SettingsIssue {
+    TriggerConflict,
+    ToggleModifiers,
+    ToggleKeyConflict,
+    DragThreshold,
+    PingSize,
+    PingDuration,
+    Volume,
+    EmoteSize,
+    DuplicatePingSlot(usize),
+    DuplicateEmoteSlot(usize),
+}
+
+pub fn scale_dip(value: i32, dpi: u32) -> i32 {
+    ((i64::from(value) * i64::from(dpi.max(1)) + 48) / 96) as i32
+}
+
+pub fn fit_window_to_work_area(work: UiRect, width: i32, height: i32, margin: i32) -> UiRect {
+    let margin = margin
+        .max(0)
+        .min(work.width().max(0) / 2)
+        .min(work.height().max(0) / 2);
+    let width = width.max(1).min((work.width() - margin * 2).max(1));
+    let height = height.max(1).min((work.height() - margin * 2).max(1));
+    let left = work.left + (work.width() - width) / 2;
+    let top = work.top + (work.height() - height) / 2;
+    UiRect {
+        left,
+        top,
+        right: left + width,
+        bottom: top + height,
+    }
+}
+
+pub fn constrain_rect_to_work_area(work: UiRect, proposed: UiRect) -> UiRect {
+    let width = proposed.width().max(1).min(work.width().max(1));
+    let height = proposed.height().max(1).min(work.height().max(1));
+    let left = proposed.left.clamp(work.left, work.right - width);
+    let top = proposed.top.clamp(work.top, work.bottom - height);
+    UiRect {
+        left,
+        top,
+        right: left + width,
+        bottom: top + height,
+    }
+}
+
+pub fn wheel_boundary_angle_degrees(boundary: usize) -> f64 {
+    boundary as f64 * 45.0 - 112.5
+}
+
+pub fn wheel_wedge_outline(slot: usize, inner: f64, outer: f64) -> Option<Vec<(f64, f64)>> {
+    if slot >= 8 || !inner.is_finite() || !outer.is_finite() || inner < 0.0 || outer <= inner {
+        return None;
+    }
+    let start = wheel_boundary_angle_degrees(slot).to_radians();
+    let end = wheel_boundary_angle_degrees(slot + 1).to_radians();
+    let mut points = Vec::with_capacity(26);
+    for step in 0..=12 {
+        let angle = start + (end - start) * step as f64 / 12.0;
+        points.push((angle.cos() * outer, angle.sin() * outer));
+    }
+    for step in (0..=12).rev() {
+        let angle = start + (end - start) * step as f64 / 12.0;
+        points.push((angle.cos() * inner, angle.sin() * inner));
+    }
+    Some(points)
+}
+
+/// Maps settings validation failures to their editable fields without interpreting error text.
+pub fn reveal_scroll_delta(top: i32, bottom: i32, viewport_height: i32) -> i32 {
+    if top < 0 {
+        top
+    } else if bottom > viewport_height {
+        bottom - viewport_height
+    } else {
+        0
+    }
+}
+
+pub fn caption_mask_usable_after_flush(usable: bool, flushed: bool) -> bool {
+    usable && flushed
+}
+
+pub fn composite_rgba_over_rgb(pixel: [u8; 4], background: [u8; 3]) -> [u8; 3] {
+    let alpha = u32::from(pixel[3]);
+    let inverse = 255 - alpha;
+    std::array::from_fn(|channel| {
+        ((u32::from(pixel[channel]) * alpha + u32::from(background[channel]) * inverse) / 255) as u8
+    })
+}
+
+/// Blends straight-alpha RGBA into the premultiplied BGRA format used by layered-window DIBs.
+pub fn composite_premultiplied_bgra(destination: [u8; 4], rgba: [u8; 4]) -> [u8; 4] {
+    let alpha = u32::from(rgba[3]);
+    let inverse = 255 - alpha;
+    [
+        ((u32::from(rgba[2]) * alpha + u32::from(destination[0]) * inverse) / 255) as u8,
+        ((u32::from(rgba[1]) * alpha + u32::from(destination[1]) * inverse) / 255) as u8,
+        ((u32::from(rgba[0]) * alpha + u32::from(destination[2]) * inverse) / 255) as u8,
+        (alpha + u32::from(destination[3]) * inverse / 255).min(255) as u8,
+    ]
+}
+
+pub fn settings_issue(settings: &Settings) -> Option<SettingsIssue> {
+    if settings
+        .emote_trigger
+        .is_some_and(|emote| same_trigger(settings.trigger, emote))
+    {
+        return Some(SettingsIssue::TriggerConflict);
+    }
+
+    let mods = settings.toggle_hotkey.mods.0;
+    if mods == 0
+        || mods & !0x0f != 0
+        || mods & (ToggleMods::CTRL.0 | ToggleMods::ALT.0 | ToggleMods::WIN.0) == 0
+    {
+        return Some(SettingsIssue::ToggleModifiers);
+    }
+    if trigger_uses_vk(settings.trigger, settings.toggle_hotkey.vk)
+        || settings
+            .emote_trigger
+            .is_some_and(|trigger| trigger_uses_vk(trigger, settings.toggle_hotkey.vk))
+    {
+        return Some(SettingsIssue::ToggleKeyConflict);
+    }
+    if !(2..=40).contains(&settings.drag_threshold_px) {
+        return Some(SettingsIssue::DragThreshold);
+    }
+    if !(60..=220).contains(&settings.ping_size_px) {
+        return Some(SettingsIssue::PingSize);
+    }
+    if !settings.ping_duration_s.is_finite() || !(1.0..=8.0).contains(&settings.ping_duration_s) {
+        return Some(SettingsIssue::PingDuration);
+    }
+    if settings.volume > 100 {
+        return Some(SettingsIssue::Volume);
+    }
+    if !(80..=300).contains(&settings.emote_size_px) {
+        return Some(SettingsIssue::EmoteSize);
+    }
+    for (slot, value) in settings.wheel.iter().enumerate() {
+        if settings.wheel[..slot].contains(value) {
+            return Some(SettingsIssue::DuplicatePingSlot(slot));
+        }
+    }
+    for (slot, value) in settings.emote_wheel.iter().enumerate() {
+        if settings.emote_wheel[..slot].contains(value) {
+            return Some(SettingsIssue::DuplicateEmoteSlot(slot));
+        }
+    }
+    None
+}
+
+fn same_trigger(left: Trigger, right: Trigger) -> bool {
+    trigger_vk(left).is_some() && trigger_vk(left) == trigger_vk(right) || left == right
+}
+
+fn trigger_uses_vk(trigger: Trigger, vk: u8) -> bool {
+    trigger_vk(trigger) == Some(vk)
+}
+
+fn trigger_vk(trigger: Trigger) -> Option<u8> {
+    match trigger {
+        Trigger::CapsLock => Some(0x14),
+        Trigger::Key { vk } => Some(vk),
+        _ => None,
+    }
+}
 
 #[cfg(any(windows, test))]
 pub(crate) struct CallbackGate(AtomicBool);
@@ -168,14 +357,6 @@ pub fn swallowed_trigger_key(settings: &Settings, vk: u8) -> bool {
         })
 }
 
-fn trigger_vk(trigger: Trigger) -> Option<u8> {
-    match trigger {
-        Trigger::CapsLock => Some(0x14),
-        Trigger::Key { vk } => Some(vk),
-        _ => None,
-    }
-}
-
 fn any_key(key_down: &mut impl FnMut(u8) -> bool, keys: &[u8]) -> bool {
     keys.iter().copied().any(key_down)
 }
@@ -295,6 +476,168 @@ mod tests {
         assert!(!report.complete);
         assert_eq!(report.balance_attempted.len(), MAX_REPLAY_INSERT_ATTEMPTS);
         assert!(report.balance_complete);
+    }
+
+    #[test]
+    fn dpi_layout_scales_and_centers_within_negative_monitor_work_areas() {
+        let work = UiRect {
+            left: -1920,
+            top: 0,
+            right: 0,
+            bottom: 1040,
+        };
+        let rect = fit_window_to_work_area(work, scale_dip(1000, 144), scale_dip(800, 144), 24);
+        assert_eq!(rect.width(), 1500);
+        assert_eq!(rect.height(), 992);
+        assert!(rect.left >= work.left + 24);
+        assert!(rect.right <= work.right - 24);
+        assert!(rect.top >= work.top + 24);
+        assert!(rect.bottom <= work.bottom - 24);
+        assert_eq!(scale_dip(10, 144), 15);
+    }
+
+    #[test]
+    fn wheel_preview_and_overlay_share_slice_boundaries() {
+        assert_eq!(wheel_boundary_angle_degrees(0), -112.5);
+        assert_eq!(wheel_boundary_angle_degrees(1), -67.5);
+        assert_eq!(wheel_boundary_angle_degrees(8), 247.5);
+    }
+
+    #[test]
+    fn focused_controls_scroll_only_when_they_leave_the_viewport() {
+        assert_eq!(reveal_scroll_delta(12, 40, 100), 0);
+        assert_eq!(reveal_scroll_delta(-8, 20, 100), -8);
+        assert_eq!(reveal_scroll_delta(88, 118, 100), 18);
+    }
+
+    #[test]
+    fn preview_rgba_is_composited_over_native_background() {
+        assert_eq!(
+            composite_rgba_over_rgb([240, 120, 20, 0], [10, 20, 30]),
+            [10, 20, 30]
+        );
+        assert_eq!(
+            composite_rgba_over_rgb([200, 100, 50, 128], [10, 20, 30]),
+            [105, 60, 40]
+        );
+        assert_eq!(
+            composite_rgba_over_rgb([200, 100, 50, 255], [10, 20, 30]),
+            [200, 100, 50]
+        );
+    }
+
+    #[test]
+    fn failed_caption_flush_permanently_disables_mask_access() {
+        let usable = caption_mask_usable_after_flush(true, false);
+        assert!(!usable);
+        assert!(!caption_mask_usable_after_flush(usable, true));
+        assert!(caption_mask_usable_after_flush(true, true));
+    }
+
+    #[test]
+    fn caption_coverage_uses_premultiplied_overlay_compositing() {
+        assert_eq!(
+            composite_premultiplied_bgra([0; 4], [248, 248, 248, 128]),
+            [124, 124, 124, 128]
+        );
+        assert_eq!(
+            composite_premultiplied_bgra([10, 20, 30, 128], [248, 248, 248, 0]),
+            [10, 20, 30, 128]
+        );
+    }
+
+    #[test]
+    fn wheel_highlight_outline_tracks_the_north_clockwise_slice_geometry() {
+        let north = wheel_wedge_outline(0, 86.0, 220.0).unwrap();
+        assert_eq!(north.len(), 26);
+        let top = north
+            .iter()
+            .min_by(|left, right| left.1.total_cmp(&right.1))
+            .unwrap();
+        assert!(top.1 < -219.0);
+        assert_eq!(
+            pingloom_core::geometry::pick_slice(0.0, -220.0, 0.0),
+            Some(0)
+        );
+        assert_eq!(pingloom_core::geometry::pick_slice(220.0, 0.0, 0.0), Some(2));
+        assert!(wheel_wedge_outline(8, 86.0, 220.0).is_none());
+        assert!(wheel_wedge_outline(0, 220.0, 86.0).is_none());
+    }
+
+    #[test]
+    fn dpi_suggested_rect_is_clamped_to_work_area_without_losing_access() {
+        let work = UiRect {
+            left: 0,
+            top: 40,
+            right: 800,
+            bottom: 600,
+        };
+        let proposed = UiRect {
+            left: 550,
+            top: 500,
+            right: 1100,
+            bottom: 900,
+        };
+        assert_eq!(
+            constrain_rect_to_work_area(work, proposed),
+            UiRect {
+                left: 250,
+                top: 200,
+                right: 800,
+                bottom: 600
+            }
+        );
+    }
+
+    #[test]
+    fn settings_issues_point_at_trigger_shortcut_range_and_duplicate_fields() {
+        let mut settings = Settings {
+            emote_trigger: Some(Trigger::Alt),
+            ..Settings::default()
+        };
+        assert_eq!(
+            settings_issue(&settings),
+            Some(SettingsIssue::TriggerConflict)
+        );
+
+        settings = Settings::default();
+        settings.toggle_hotkey.mods = ToggleMods(0);
+        assert_eq!(
+            settings_issue(&settings),
+            Some(SettingsIssue::ToggleModifiers)
+        );
+
+        settings = Settings {
+            trigger: Trigger::Key { vk: b'A' },
+            ..Settings::default()
+        };
+        settings.toggle_hotkey.vk = b'A';
+        assert_eq!(
+            settings_issue(&settings),
+            Some(SettingsIssue::ToggleKeyConflict)
+        );
+
+        settings = Settings::default();
+        settings.drag_threshold_px = 1;
+        assert_eq!(
+            settings_issue(&settings),
+            Some(SettingsIssue::DragThreshold)
+        );
+
+        settings = Settings::default();
+        settings.wheel[3] = settings.wheel[1];
+        assert_eq!(
+            settings_issue(&settings),
+            Some(SettingsIssue::DuplicatePingSlot(3))
+        );
+
+        settings = Settings::default();
+        settings.emote_wheel[4] = settings.emote_wheel[0].clone();
+        assert_eq!(
+            settings_issue(&settings),
+            Some(SettingsIssue::DuplicateEmoteSlot(4))
+        );
+        assert_eq!(settings_issue(&Settings::default()), None);
     }
 
     #[test]

@@ -1,4 +1,4 @@
-# pingloom-rs
+# Pingloom
 
 Desktop pings and emotes placed through a radial gesture, independent of the game itself.
 

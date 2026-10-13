@@ -1,38 +1,27 @@
-# Approved MVP
-
-User approved all items below. This is a rewrite, not a complete feature-parity port.
+# Pingloom — Approved MVP
 
 ## Target
 
-- Windows 11 x64 portable executable. Entire application is Rust, including input hooks, UI, rendering and audio integration. No Electron, WebView, JavaScript runtime or C++ helper.
-- Native settings window; functional keyboard accessibility, labels and focus navigation. Pixel parity with Fluent UI is not required.
-- Source reference: https://github.com/zhugez/Pingloom at f24a51e5a11c2b31dab72d89a571cc4025ad3c98; local read-only reference /tmp/pingloom-upstream.
+Windows 11 x64 portable desktop app. Native Rust owns low-latency keyboard/mouse hooks, replay, gesture state, click-through ping/emote overlays, animation/audio and tray. Settings is the only WebView: a local bundled Tauri 2 window using Svelte 5 + Vite + Tailwind/daisyUI + `@lucide/svelte`. This is not a website, SvelteKit app, server, demo, or WebView-rendered overlay. Evergreen WebView2 is a Settings runtime prerequisite. No production Node process.
+
+The approved UI migration supersedes earlier Rust-only/native-Settings restrictions. Existing native wheel/ping/emote renderers and improvements remain authoritative and must be preserved.
 
 ## Included
 
-- Hold Alt and drag for the eight-slice ping wheel; hold Ctrl and drag for the eight-slice emote wheel.
-- Release to choose; release in centre, Escape or right-click cancels. Do not swallow ordinary trigger taps, typing or unrelated shortcuts. Trace upstream input arbitration, including synthetic replay and stuck-key prevention.
-- Configurable trigger keys, toggle shortcut, size, duration, volume, mute and wheel slot assignment. Persist settings safely; validate loaded settings, preserve corrupt file rather than silently destroying it.
-- Upstream ping textures/animations and sounds, upstream built-in emote images/animations and sounds. Correct asset attribution.
-- Transparent, always-on-top, click-through overlays, supporting multiple monitors, mixed DPI and negative desktop coordinates. Draw at the gesture location and ensure normal apps regain input after completion/cancel/quit.
-- Pause initiation on the display occupied by a fullscreen application. Preserve normal input in that state; don't globally disable other monitors.
-- Tray actions: settings, pause/resume, quit. Configurable toggle shortcut (default Ctrl+Alt+P). No elevation requirement.
-- Portable .exe plus a reproducible Windows build and CI artifact. Prefer embedded assets so executable is truly portable, or explicitly document any necessary companion asset layout.
-- Gemini-generated original README banner/logo decoration only, not replacement game assets.
+- Hold Alt/Ctrl and drag for eight-slice ping/emote wheels; release selects, centre/Escape/right-click cancels. Preserve ordinary input, replay and stuck-key prevention.
+- Configurable triggers, toggle shortcut, size, duration, volume, mute, assets and wheel assignments; validated settings and safe atomic persistence.
+- Embedded upstream artwork, animations and sounds with attribution; transparent, always-on-top, click-through overlays across monitors and negative coordinates.
+- Fullscreen-display gesture pause, tray settings/pause/resume/quit, keyboard-accessible Settings with Save/Cancel and field-directed errors.
+- One Settings WebView only. It communicates through narrowly scoped validated commands to the native owner; no arbitrary filesystem/path access, remote navigation, hosted endpoint, shell/plugin, or frontend authority over persistence/validation.
 
 ## Excluded
 
-- Rooms, LAN/Nostr, crypto sharing, updater, installer, startup registration, custom image import, macOS, Linux desktop support.
-- Admin-window and exclusive-fullscreen overlay support; respect Windows restrictions and document them.
+Rooms, sharing, updater, installer, startup registration, custom image import, macOS/Linux desktop support, admin-window and exclusive-fullscreen overlay support.
 
 ## Acceptance evidence
 
-- Runnable Rust tests for gesture transitions, cancellation, wheel selection, settings validation and coordinate handling.
-- cargo fmt --check; cargo test; cargo clippy with warnings denied where feasible.
-- Compile actual Windows code, not just a Linux stub. Windows CI checks/builds/tests the Windows target and produces a release executable artifact.
-- Windows runtime behavior (hooks, fullscreen, mixed-DPI, animation, sound and tray) requires a real Windows smoke check. Never describe cross-compilation or CI build success as a completed desktop runtime test.
-- README: architecture, build/use, limitations, attribution, deferred scope and exact validation status. MIT upstream attribution preserved; Riot assets are not covered by MIT.
+Rust tests and fmt/clippy; Windows-target compilation and linked executable; clean frontend install/check/tests/build; restrictive capability/CSP/navigation review; real Windows 11 smoke test for hooks, WebView2 lifecycle, save/reload, replay, fullscreen, DPI, animation/audio and tray. Cross-compilation is not runtime evidence. Existing embedded assets total about 58 MiB; no 2–4 MiB executable claim is valid. README must state exact evidence and outstanding checks. Current integration has not had a real Windows smoke test; Windows-only unit tests merely compile on this host. Riot assets are not covered by MIT.
 
-## Implementation policy
+## Build/runtime constraints
 
-Use openai-codex/gpt-6-luna at max thinking for implementation. No silent model fallback. Prefer Win32/platform APIs and a few established Rust crates to speculative abstractions. Do not silently cut a requested feature; escalate concrete blockers.
+Vite emits local static `ui/dist` files embedded by Tauri; Node/npm are build-time only. Evergreen WebView2 must be installed on Windows 11. Keep Win32 hooks and their message pump on a dedicated owner thread; never block Tauri's event loop or run two blocking pumps on one thread. WebView2/process-failure recovery and orderly shutdown must be explicitly verified before claiming complete integration.

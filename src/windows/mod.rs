@@ -1,6 +1,9 @@
 mod assets;
 mod audio;
+pub(crate) mod desktop_settings;
 mod overlay;
+pub(crate) mod runtime_mailbox;
+#[allow(dead_code)]
 mod settings_window;
 
 use std::cell::RefCell;
@@ -9,11 +12,11 @@ use std::path::PathBuf;
 use std::ptr::{null, null_mut};
 
 use pingloom_core::gesture::{InputDecision, ReplayInput};
-use pingloom_core::model::{Action, Button, InputEvent, Point, WheelKind};
+use pingloom_core::model::{Action, Button, InputEvent, Point, Trigger, WheelKind};
 use pingloom_core::settings::Settings;
 use pingloom_core::GestureEngine;
 
-use super::logic::{insert_replay_batch, take_deferred, ReplayInsertReport};
+use super::logic::{insert_replay_batch, settings_issue, take_deferred, ReplayInsertReport};
 use windows_sys::core::w;
 use windows_sys::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows_sys::Win32::Graphics::Gdi::{
@@ -32,7 +35,8 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
     MOUSEEVENTF_RIGHTUP, MOUSEEVENTF_XDOWN, MOUSEEVENTF_XUP, MOUSEINPUT,
 };
 use windows_sys::Win32::UI::Shell::{
-    Shell_NotifyIconW, NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NOTIFYICONDATAW,
+    Shell_NotifyIconW, NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NIM_MODIFY,
+    NOTIFYICONDATAW,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CallNextHookEx, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu,
@@ -40,16 +44,18 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     PostQuitMessage, RegisterClassW, SetForegroundWindow, SetTimer, SetWindowLongPtrW,
     SetWindowsHookExW, TrackPopupMenu, TranslateMessage, UnhookWindowsHookEx, CREATESTRUCTW,
     GWLP_USERDATA, GWL_STYLE, HC_ACTION, HHOOK, HWND_MESSAGE, IDI_APPLICATION, KBDLLHOOKSTRUCT,
-    LLKHF_INJECTED, LLMHF_INJECTED, MF_STRING, MSLLHOOKSTRUCT, TPM_RETURNCMD, TPM_RIGHTBUTTON,
-    WH_KEYBOARD_LL, WH_MOUSE_LL, WM_APP, WM_CLOSE, WM_CONTEXTMENU, WM_DESTROY, WM_DISPLAYCHANGE,
-    WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEMOVE,
-    WM_NCCREATE, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SYSKEYDOWN, WM_SYSKEYUP, WM_TIMER,
-    WM_XBUTTONDOWN, WM_XBUTTONUP, WNDCLASSW, WS_CAPTION, WS_EX_TOOLWINDOW, WS_OVERLAPPED, XBUTTON1,
-    XBUTTON2,
+    LLKHF_INJECTED, LLMHF_INJECTED, MF_GRAYED, MF_STRING, MSLLHOOKSTRUCT, TPM_RETURNCMD,
+    TPM_RIGHTBUTTON, WH_KEYBOARD_LL, WH_MOUSE_LL, WM_APP, WM_CLOSE, WM_CONTEXTMENU, WM_DESTROY,
+    WM_DISPLAYCHANGE, WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN,
+    WM_MBUTTONUP, WM_MOUSEMOVE, WM_NCCREATE, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SYSKEYDOWN,
+    WM_SYSKEYUP, WM_TIMER, WM_XBUTTONDOWN, WM_XBUTTONUP, WNDCLASSW, WS_CAPTION, WS_EX_TOOLWINDOW,
+    WS_OVERLAPPED, XBUTTON1, XBUTTON2,
 };
 
 use overlay::{AnimatedFrame, Overlay};
+use runtime_mailbox::{OwnerError, OwnerMailbox, OwnerRequest, RuntimeStatus, WM_OWNER_REQUEST};
 use settings_window::SettingsWindow;
+use std::sync::{mpsc, Arc};
 
 const SELF_MARKER: usize = 0x4c50_494e;
 const TIMER_FRAME: usize = 1;
@@ -62,7 +68,6 @@ const APP_SETTINGS_MESSAGE: u32 = WM_APP + 14;
 const APP_SETTINGS_CLOSED: u32 = WM_APP + 15;
 const WM_REPLAY_FAILURE: u32 = WM_APP + 16;
 const WM_SETTINGS_FAILURE: u32 = WM_APP + 17;
-static mut CONTROL_FONT: isize = 0;
 const ID_SETTINGS: i32 = 1;
 const ID_TOGGLE: i32 = 2;
 const ID_QUIT: i32 = 3;
@@ -98,11 +103,34 @@ struct App {
     native_keys_down: [bool; 256],
     tray_added: bool,
     shutting_down: bool,
+    mailbox: Arc<OwnerMailbox>,
+    settings_suspended: bool,
+    load_warning: Option<String>,
+    app_handle: tauri::AppHandle,
+    desktop_state: Arc<desktop_settings::DesktopSettingsState>,
 }
 
-pub fn run() -> Result<(), String> {
-    let result = unsafe { run_inner() };
+pub fn run(
+    mailbox: Arc<OwnerMailbox>,
+    ready: mpsc::Sender<Result<(), String>>,
+    app_handle: tauri::AppHandle,
+    desktop_state: Arc<desktop_settings::DesktopSettingsState>,
+) -> Result<(), String> {
+    let mut readiness_reported = false;
+    let result = unsafe {
+        run_inner(
+            &mailbox,
+            &ready,
+            &mut readiness_reported,
+            app_handle,
+            desktop_state,
+        )
+    };
+    mailbox.close_and_reject_pending();
     if let Err(error) = &result {
+        if !readiness_reported {
+            let _ = ready.send(Err(error.clone()));
+        }
         show_error(error);
     }
     result
@@ -121,26 +149,28 @@ fn show_error(error: &str) {
     }
 }
 
-unsafe fn run_inner() -> Result<(), String> {
+unsafe fn run_inner(
+    mailbox: &Arc<OwnerMailbox>,
+    ready: &mpsc::Sender<Result<(), String>>,
+    readiness_reported: &mut bool,
+    app_handle: tauri::AppHandle,
+    desktop_state: Arc<desktop_settings::DesktopSettingsState>,
+) -> Result<(), String> {
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     let instance = GetModuleHandleW(null());
     if instance.is_null() {
         return Err("could not get application module handle".into());
     }
-    CONTROL_FONT = windows_sys::Win32::Graphics::Gdi::GetStockObject(
-        windows_sys::Win32::Graphics::Gdi::DEFAULT_GUI_FONT,
-    ) as isize;
     register_main(instance)?;
     overlay::register(instance)?;
-    settings_window::register(instance)?;
 
     let settings_path = settings_path()?;
-    let settings = match Settings::load(&settings_path) {
-        Ok(settings) => settings,
+    let (settings, load_warning) = match Settings::load(&settings_path) {
+        Ok(settings) => (settings, None),
         Err(error) => {
             let message = format!("Settings could not be loaded ({error}). The existing file was left unchanged; defaults are active until you save settings.");
             show_error(&message);
-            Settings::default()
+            (Settings::default(), Some(message))
         }
     };
     let engine = GestureEngine::new(settings).map_err(|error| error.to_string())?;
@@ -158,6 +188,11 @@ unsafe fn run_inner() -> Result<(), String> {
         native_keys_down: [false; 256],
         tray_added: false,
         shutting_down: false,
+        mailbox: Arc::clone(mailbox),
+        settings_suspended: false,
+        load_warning,
+        app_handle,
+        desktop_state,
     });
     let app_ptr = (&mut *app) as *mut App;
     APPLICATION = app_ptr;
@@ -189,6 +224,12 @@ unsafe fn run_inner() -> Result<(), String> {
     }
     SetTimer(hwnd, TIMER_FRAME, 33, None);
     SetTimer(hwnd, TIMER_WATCHDOG, 500, None);
+    mailbox.publish_hwnd(hwnd);
+    if let Ok(mut slot) = app.desktop_state.mailbox.lock() {
+        *slot = Some(Arc::clone(mailbox));
+    }
+    let _ = ready.send(Ok(()));
+    *readiness_reported = true;
 
     let mut message = zeroed();
     loop {
@@ -253,6 +294,10 @@ unsafe fn dispatch_deferred_main_messages() {
         }
         for message in messages {
             match message.message {
+                WM_OWNER_REQUEST => {
+                    let app = APPLICATION;
+                    if !app.is_null() { (&mut *app).process_owner_requests(); }
+                }
                 APP_SETTINGS_MESSAGE => apply_settings_message(message.lparam),
                 WM_DISPLAYCHANGE => handle_display_change(),
                 WM_REPLAY_FAILURE => show_error("Windows could not replay one or more inputs. Gestures have been paused; use the tray to resume."),
@@ -303,15 +348,23 @@ unsafe fn defer_during_settings_callback(message: u32, wparam: WPARAM, lparam: L
                 })
             });
         }
-        WM_TIMER | WM_TRAY => {}
+        WM_TIMER | WM_TRAY | WM_OWNER_REQUEST => {}
         _ => return false,
     }
     true
 }
 
+fn safe_custom_trigger(trigger: Trigger) -> bool {
+    let Trigger::Key { vk } = trigger else {
+        return true;
+    };
+    (1..=254).contains(&vk)
+        && !matches!(vk, 0x08 | 0x09 | 0x0d | 0x10..=0x12 | 0x1b | 0x20 | 0x25..=0x28 | 0x5b | 0x5c | 0xa0..=0xa5)
+}
+
 fn settings_path() -> Result<PathBuf, String> {
     let roaming = std::env::var_os("APPDATA").ok_or("APPDATA is not available")?;
-    Ok(PathBuf::from(roaming).join("Pingloom").join("settings.json"))
+    Ok(pingloom_core::settings::resolve_settings_path(roaming))
 }
 
 unsafe fn register_main(instance: HINSTANCE) -> Result<(), String> {
@@ -355,7 +408,39 @@ impl App {
             return Err("could not add the notification-area icon".into());
         }
         self.tray_added = true;
+        self.update_tray_status();
         Ok(())
+    }
+
+    unsafe fn update_tray_status(&mut self) {
+        if !self.tray_added {
+            return;
+        }
+        let state = if self.settings_suspended {
+            "Settings open — gestures paused"
+        } else if self.engine.enabled() {
+            "Gestures active"
+        } else {
+            "Gestures paused"
+        };
+        let mut data: NOTIFYICONDATAW = zeroed();
+        data.cbSize = size_of::<NOTIFYICONDATAW>() as u32;
+        data.hWnd = self.hwnd;
+        data.uID = 1;
+        data.uFlags = NIF_TIP;
+        let tip: Vec<u16> = format!("Pingloom — {state}")
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
+        let length = tip.len().min(data.szTip.len());
+        data.szTip[..length].copy_from_slice(&tip[..length]);
+        Shell_NotifyIconW(NIM_MODIFY, &data);
+    }
+
+    unsafe fn set_gestures_enabled(&mut self, enabled: bool) {
+        let decision = self.engine.set_enabled(enabled);
+        self.apply_decision(decision, false, None);
+        self.update_tray_status();
     }
 
     unsafe fn install_hooks(&mut self) -> Result<(), String> {
@@ -380,6 +465,8 @@ impl App {
 
     unsafe fn shutdown(&mut self) {
         self.shutting_down = true;
+        let decision = self.engine.set_suspended(true);
+        self.apply_decision(decision, false, None);
         self.overlay.wheel_close();
         self.drain_injections();
         if !self.mouse_hook.is_null() {
@@ -542,7 +629,7 @@ impl App {
                 }
             },
             Action::Cancel => self.overlay.wheel_close(),
-            Action::Toggled { .. } => {}
+            Action::Toggled { .. } => self.update_tray_status(),
         }
         self.overlay.tick(&settings);
     }
@@ -568,21 +655,7 @@ impl App {
     }
 
     unsafe fn show_settings(&mut self) {
-        let newly_opened = self.settings_window.hwnd().is_null();
-        if newly_opened {
-            let decision = self.engine.set_suspended(true);
-            self.apply_decision(decision, false, None);
-        }
-        let settings = self.settings().clone();
-        if !self.settings_window.open(&settings, self.instance) {
-            if newly_opened {
-                let decision = self.engine.set_suspended(false);
-                self.apply_decision(decision, false, None);
-            }
-            if PostMessageW(self.hwnd, WM_SETTINGS_FAILURE, 0, 0) == 0 {
-                output_debug_string("could not create the settings window");
-            }
-        }
+        desktop_settings::schedule_open(self.app_handle.clone(), Arc::clone(&self.desktop_state));
     }
 
     unsafe fn drain_injections(&mut self) {
@@ -616,14 +689,129 @@ impl App {
             report.balance_attempted.len(),
             report.balance_attempts,
         );
-        let decision = self.engine.set_enabled(false);
-        self.apply_decision(decision, false, None);
+        self.set_gestures_enabled(false);
         if self.shutting_down {
             output_debug_string(&message);
             return;
         }
         if PostMessageW(self.hwnd, WM_REPLAY_FAILURE, 0, 0) == 0 {
             output_debug_string(&message);
+        }
+    }
+
+    fn owner_status(&self) -> RuntimeStatus {
+        RuntimeStatus {
+            enabled: self.engine.enabled(),
+            settings_suspended: self.settings_suspended,
+            load_warning: self.load_warning.clone(),
+        }
+    }
+
+    unsafe fn process_owner_requests(&mut self) {
+        for request in self.mailbox.take_all() {
+            match request {
+                OwnerRequest::Query(reply) => {
+                    let _ = reply.send(Ok((self.settings().clone(), self.owner_status())));
+                }
+                OwnerRequest::Suspend(suspended, reply) => {
+                    if self.settings_suspended != suspended {
+                        let decision = self.engine.set_suspended(suspended);
+                        self.apply_decision(decision, false, None);
+                        if suspended {
+                            self.drain_injections();
+                        }
+                        self.settings_suspended = suspended;
+                        self.update_tray_status();
+                    }
+                    let _ = reply.send(Ok(self.owner_status()));
+                }
+                OwnerRequest::Save(settings, reply) => {
+                    let settings = *settings;
+                    let result = (|| {
+                        if let Some(issue) = settings_issue(&settings) {
+                            let field = match issue {
+                                super::logic::SettingsIssue::TriggerConflict => "trigger".into(),
+                                super::logic::SettingsIssue::ToggleModifiers => {
+                                    "toggle_hotkey.mods".into()
+                                }
+                                super::logic::SettingsIssue::ToggleKeyConflict => {
+                                    "toggle_hotkey.vk".into()
+                                }
+                                super::logic::SettingsIssue::DragThreshold => {
+                                    "drag_threshold_px".into()
+                                }
+                                super::logic::SettingsIssue::PingSize => "ping_size_px".into(),
+                                super::logic::SettingsIssue::PingDuration => {
+                                    "ping_duration_s".into()
+                                }
+                                super::logic::SettingsIssue::Volume => "volume".into(),
+                                super::logic::SettingsIssue::EmoteSize => "emote_size_px".into(),
+                                super::logic::SettingsIssue::DuplicatePingSlot(slot) => {
+                                    format!("wheel.{slot}")
+                                }
+                                super::logic::SettingsIssue::DuplicateEmoteSlot(slot) => {
+                                    format!("emote_wheel.{slot}")
+                                }
+                            };
+                            return Err(OwnerError {
+                                code: "validation",
+                                message: format!("Settings conflict: {issue:?}"),
+                                field: Some(field),
+                            });
+                        }
+                        settings.validate().map_err(|error| OwnerError {
+                            code: "validation",
+                            message: error.to_string(),
+                            field: Some(
+                                if settings.version != 1 {
+                                    "version"
+                                } else if matches!(settings.trigger, Trigger::Key { .. })
+                                    && !safe_custom_trigger(settings.trigger)
+                                {
+                                    "trigger"
+                                } else if settings.emote_trigger.is_some_and(|t| {
+                                    matches!(t, Trigger::Key { .. }) && !safe_custom_trigger(t)
+                                }) {
+                                    "emote_trigger"
+                                } else {
+                                    "toggle_hotkey.vk"
+                                }
+                                .into(),
+                            ),
+                        })?;
+                        settings
+                            .save_atomic(settings_path().map_err(OwnerError::unavailable)?)
+                            .map_err(|error| OwnerError {
+                                code: "io",
+                                message: error.to_string(),
+                                field: None,
+                            })?;
+                        let decision =
+                            self.engine
+                                .set_settings(settings)
+                                .map_err(|error| OwnerError {
+                                    code: "validation",
+                                    message: error.to_string(),
+                                    field: None,
+                                })?;
+                        self.apply_decision(decision, false, None);
+                        self.drain_injections();
+                        self.load_warning = None;
+                        let applied_settings = self.settings().clone();
+                        self.overlay.tick(&applied_settings);
+                        self.update_tray_status();
+                        Ok(self.owner_status())
+                    })();
+                    let _ = reply.send(result);
+                }
+                OwnerRequest::Quit(reply) => {
+                    let decision = self.engine.set_suspended(true);
+                    self.apply_decision(decision, false, None);
+                    self.drain_injections();
+                    let _ = reply.send(Ok(()));
+                    PostQuitMessage(0);
+                }
+            }
         }
     }
 
@@ -648,11 +836,8 @@ impl App {
                 self.overlay.set_emote_frames(&slug, frames);
                 Some(0)
             }
-            APP_SETTINGS_CLOSED => {
-                let decision = self.engine.set_suspended(false);
-                self.apply_decision(decision, false, None);
-                Some(0)
-            }
+            // Dormant native Settings notifications are untagged; only desktop lifecycle ACKs may resume hooks.
+            APP_SETTINGS_CLOSED => Some(0),
             WM_TIMER if wparam == TIMER_FRAME => {
                 let settings = self.settings().clone();
                 self.overlay.tick(&settings);
@@ -786,7 +971,20 @@ unsafe fn handle_tray_message(event: u32) {
         return;
     }
     AppendMenuW(menu, MF_STRING, ID_SETTINGS as usize, w!("Settings"));
-    let toggle = if (*app).engine.enabled() {
+    let settings_open = (*app).settings_suspended;
+    let status = if settings_open {
+        w!("Gestures paused while Settings is open")
+    } else if (*app).engine.enabled() {
+        w!("Gestures active")
+    } else {
+        w!("Gestures paused")
+    };
+    AppendMenuW(menu, MF_STRING | MF_GRAYED, 0, status);
+    let toggle = if settings_open && (*app).engine.enabled() {
+        w!("Disable gestures when Settings closes")
+    } else if settings_open {
+        w!("Enable gestures when Settings closes")
+    } else if (*app).engine.enabled() {
         w!("Pause gestures")
     } else {
         w!("Resume gestures")
@@ -810,10 +1008,12 @@ unsafe fn handle_tray_message(event: u32) {
         ID_SETTINGS => (&mut *app).show_settings(),
         ID_TOGGLE => {
             let app = &mut *app;
-            let decision = app.engine.set_enabled(!app.engine.enabled());
-            app.apply_decision(decision, false, None);
+            let enabled = !app.engine.enabled();
+            app.set_gestures_enabled(enabled);
         }
-        ID_QUIT => PostQuitMessage(0),
+        ID_QUIT => {
+            let _ = (*app).mailbox.quit();
+        }
         _ => {}
     }
 }
@@ -879,6 +1079,13 @@ unsafe extern "system" fn main_proc(
             handle_tray_message(lparam as u32);
             0
         }
+        WM_OWNER_REQUEST => {
+            let app = APPLICATION;
+            if !app.is_null() {
+                (&mut *app).process_owner_requests();
+            }
+            0
+        }
         APP_SETTINGS_MESSAGE => {
             apply_settings_message(lparam);
             0
@@ -897,7 +1104,7 @@ unsafe extern "system" fn main_proc(
         }
         _ if matches!(
             message,
-            WM_INJECT | WM_ACTION | WM_FRAMES | APP_SETTINGS_CLOSED
+            WM_INJECT | WM_ACTION | WM_FRAMES | APP_SETTINGS_CLOSED | WM_OWNER_REQUEST
         ) || message == WM_TIMER && matches!(wparam, TIMER_FRAME | TIMER_WATCHDOG) =>
         {
             let app = APPLICATION;

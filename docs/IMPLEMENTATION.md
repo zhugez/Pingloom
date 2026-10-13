@@ -1,14 +1,34 @@
-# Implementation ownership
+# Implementation status
 
-Classification: multi-seam. Portable gesture/settings behavior can be tested independently of Win32 hook/window/render APIs. Native input, message pump, overlay and settings UI are tightly coupled by ownership and event dispatch, so keep them one native component owner, not overlapping window writers.
+Native and frontend integration work is serial in this checkout; preserve the intentional dirty baseline. No commits or CI dispatch are part of this work.
 
-All lanes run serially in /home/dev/pingloom-rs on main. Each component commits its durable handoff before the next owner starts. Parent owns publication, scope and acceptance. No child may push, create remote repos, release, spawn other agents, or change approved scope.
+## Architecture and current status
 
-| Lane | Exclusive ownership | Gate | Handoff | Independence |
-| --- | --- | --- | --- | --- |
-| Core | Cargo.toml/Cargo.lock bootstrap, src/lib.rs and portable model/gesture/settings/geometry modules | cargo test, fmt, clippy portable logic | Commit + managed report with public API and test commands | No Windows desktop needed |
-| Native | src/main.rs, src/windows/**, Windows-only dependencies/resources, native settings/hooks/tray/overlay/audio, assets manifest/packaging | Windows target compile; core tests remain passing | Commit + managed report, exact runtime checks not run | Consumes core API; does not rewrite core semantics |
-| Integration | Windows CI/build packaging/README, minimal fixes at component boundary only | fmt/test/clippy and real Windows target compile or CI | Commit + exact validation evidence | After both contracts exist; does not reimplement components |
-| Review | Read-only source/contract review | Evidence-backed findings | Managed report | Fresh inspection after integration |
+Tauri owns one local Settings WebView. A separate pumped Win32 owner thread retains `APPLICATION`, hooks, replay, gesture engine, native overlays, animation/audio and tray. Bounded owned requests are handled serially on that owner. Opening Settings suspends/replays and acknowledges before the window is created; Save validates, persists and applies on the owner; close and watchdog destroy the window before idempotent resume. The dormant native Settings source remains in-tree but is no longer the active tray route.
 
-Upstream source is /tmp/pingloom-upstream at f24a51e5a11c2b31dab72d89a571cc4025ad3c98, read-only. Generated branding is parent-owned before workers launch. Parent must inspect final findings and disposition them before reporting completion.
+The Tauri bridge is registered in `src/main.rs` and implemented in `src/windows/desktop_settings.rs`; mailbox and owner lifecycle live under `src/windows/`. Four commands expose boot/catalog, Save, close, and heartbeat. Caller label plus local origin/path are checked. Candidate payload size/tree/keys/wheel lengths/enums/assets are restricted; canonical persistence/application remains native. UI resources are bundled from `ui/dist`. Capability is Settings-window scoped and only grants event listening; navigation and CSP constrain local content and embedded image previews.
+
+## Build/runtime constraints
+
+Windows 11 x64 with Evergreen WebView2 Runtime is required. Missing/unavailable WebView2 prevents Settings startup; build output logs the prerequisite on window creation failure. Node/npm are needed only to build static frontend assets. `build.rs` embeds the frontend distribution; the app has no production Node service. The embedded game assets total approximately 58 MiB, so expect a large executable. No installer/updater is supplied.
+
+Build in this order on Windows with Rust stable and Visual Studio 2022 Build Tools/C++ workload:
+
+```powershell
+cd ui
+npm ci
+npm run check
+npm test
+npm run build
+cd ..
+cargo fmt --all -- --check
+cargo build --locked --release --target x86_64-pc-windows-msvc --bin pingloom
+```
+
+GNU cross-build/check examples: `cargo check --locked --tests --target x86_64-pc-windows-gnu --bin pingloom`; actual link requires the matching MinGW linker. No CI workflow was dispatched.
+
+## Evidence and gaps
+
+Host frontend check/test/build, Rust formatting/tests/host Clippy, and Windows GNU check/test-check/Clippy/link build are the expected validation suite; report actual command outcomes from the integration run, not this target list. This Linux host cannot exercise WebView2/Win32 behavior. The Windows-only session/mailbox unit tests compile but are not executed here. No Windows 11 runtime or browser visual certification is claimed.
+
+Windows smoke checklist: Evergreen present/absent startup; tray open/focus and suspension/replay acknowledgement; field edits/save/restart; Cancel/Escape/OS close/watchdog and pause preservation; renderer/WebView2 failure; orderly tray shutdown; mixed DPI/multimonitor, fullscreen, hooks, overlays, animation/audio and tray. Remaining risk includes Tauri/WebView2 lifecycle and actual accessibility/visual behavior until this checklist is run on Windows.

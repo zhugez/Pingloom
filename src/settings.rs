@@ -10,6 +10,18 @@ use crate::model::{
     DEFAULT_PING_WHEEL, EMOTE_ASSETS,
 };
 
+pub const LEGACY_SETTINGS_DIR_NAME: &str = "Pingloom";
+pub const SETTINGS_FILE_NAME: &str = "settings.json";
+
+/// Resolves the canonical user settings path under Roaming AppData.
+/// Preserved as `%APPDATA%\Pingloom\settings.json` for backwards compatibility.
+pub fn resolve_settings_path(roaming_appdata: impl AsRef<Path>) -> std::path::PathBuf {
+    roaming_appdata
+        .as_ref()
+        .join(LEGACY_SETTINGS_DIR_NAME)
+        .join(SETTINGS_FILE_NAME)
+}
+
 const MAX_SETTINGS_BYTES: u64 = 64 * 1024;
 const MOD_CTRL: u8 = 1;
 const MOD_ALT: u8 = 2;
@@ -405,5 +417,20 @@ mod tests {
         fs::write(&path, &bytes).unwrap();
         assert!(Settings::load(&path).is_err());
         assert_eq!(fs::metadata(&path).unwrap().len(), bytes.len() as u64);
+    }
+
+    #[test]
+    fn legacy_settings_path_remains_stable_for_compatibility() {
+        assert_eq!(LEGACY_SETTINGS_DIR_NAME, "Pingloom");
+        assert_eq!(SETTINGS_FILE_NAME, "settings.json");
+        let fake_appdata = Path::new("AppData").join("Roaming");
+        let resolved = resolve_settings_path(&fake_appdata);
+        assert_eq!(
+            resolved,
+            Path::new("AppData")
+                .join("Roaming")
+                .join("Pingloom")
+                .join("settings.json")
+        );
     }
 }
