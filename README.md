@@ -10,7 +10,7 @@
   <a href="https://v2.tauri.app/"><img src="https://img.shields.io/badge/Tauri-v2-24C8DB?logo=tauri&logoColor=white" alt="Tauri 2" /></a>
   <a href="https://svelte.dev/"><img src="https://img.shields.io/badge/Svelte-v5-FF3E00?logo=svelte&logoColor=white" alt="Svelte 5" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue" alt="License" /></a>
-  <a href="https://github.com/zhugez/pingloom-rs/issues"><img src="https://img.shields.io/badge/Issues-zhugez%2Fpingloom--rs-informational?logo=github" alt="Issue Tracker" /></a>
+  <a href="https://github.com/zhugez/pingloom/issues"><img src="https://img.shields.io/badge/Issues-zhugez%2Fpingloom-informational?logo=github" alt="Issue Tracker" /></a>
 </p>
 
 Pingloom places League of Legends tactical pings and animated emotes on the Windows desktop through quick radial gestures, completely independent of the game client.
@@ -69,7 +69,7 @@ Legacy settings storage path and schema are preserved for backwards compatibilit
 
 - **Persistence Path**: Settings persist at `%APPDATA%\Pingloom\settings.json`. The legacy directory and settings schema are preserved and verified via unit test `legacy_settings_path_remains_stable_for_compatibility` (live upgrade runtime untested).
 - **Application Identifier**: The Tauri application identifier is maintained as `com.pingloom.desktop` in `tauri.conf.json` for update continuity and legacy compatibility.
-- **Native IPC & WM Classes**: Internal native Win32 window classes (`pingloom-main`, `pingloom-overlay`, `pingloom-settings`) and IPC command structures remain stable.
+- **Native IPC & WM Classes**: Internal native Win32 window classes (`pingloom-main`, `pingloom-overlay`, `pingloom-settings`) use the new brand; IPC command structures remain stable.
 
 ---
 
@@ -170,4 +170,4 @@ Before distributing `pingloom.exe` on Windows 11, verify the following manual te
 - **Upstream Credit**: This rewrite is based on and acknowledges [Pingloom](https://github.com/zhugez/Pingloom) by zhugez at commit [`f24a51e5a11c2b31dab72d89a571cc4025ad3c98`](https://github.com/zhugez/Pingloom/tree/f24a51e5a11c2b31dab72d89a571cc4025ad3c98). Upstream MIT attribution is retained in `THIRD_PARTY_NOTICES.txt` and `LICENSE`.
 - **Riot Games Assets**: Bundled League of Legends ping textures, sound effects, and emote graphics are © Riot Games, Inc. and are **not** covered by the MIT license. Bundling within this project grants no redistribution rights; verify usage rights before redistributing. Pingloom is not endorsed by Riot Games and does not reflect the views or opinions of Riot Games or anyone officially involved in producing or managing League of Legends properties.
 - **Font Assets**: Bundled variable fonts for **Plus Jakarta Sans** are licensed under the SIL Open Font License 1.1.
-- **Issues & Contributions**: Issue tracking and pull requests are managed at [`zhugez/pingloom-rs`](https://github.com/zhugez/pingloom-rs).
+- **Issues & Contributions**: Issue tracking and pull requests are managed at [`zhugez/pingloom`](https://github.com/zhugez/pingloom).

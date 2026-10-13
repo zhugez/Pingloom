@@ -1,4 +1,4 @@
-//! Portable input decisions, wheel geometry, asset identities, and settings for pingloom-rs.
+//! Portable input decisions, wheel geometry, asset identities, and settings for Pingloom.
 
 pub mod geometry;
 pub mod gesture;

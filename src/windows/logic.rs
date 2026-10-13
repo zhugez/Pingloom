@@ -559,7 +559,10 @@ mod tests {
             pingloom_core::geometry::pick_slice(0.0, -220.0, 0.0),
             Some(0)
         );
-        assert_eq!(pingloom_core::geometry::pick_slice(220.0, 0.0, 0.0), Some(2));
+        assert_eq!(
+            pingloom_core::geometry::pick_slice(220.0, 0.0, 0.0),
+            Some(2)
+        );
         assert!(wheel_wedge_outline(8, 86.0, 220.0).is_none());
         assert!(wheel_wedge_outline(0, 220.0, 86.0).is_none());
     }
