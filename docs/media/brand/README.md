@@ -7,7 +7,7 @@ Concept images generated with Gemini `gemini-3-pro-image`. High-contrast derivat
 - `pingloom-mark.svg`: manually reconstructed, scalable mark based on the Gemini concept.
 - `pingloom-mark-mono.svg`: cropped single-color mark with transparent crossing cuts; Settings uses it as a theme-foreground alpha mask.
 - `pingloom-app-icon.svg`: dark, fixed high-contrast icon plate with white P/blush crossing, for desktop app icons.
-- `pingloom-wordmark-light.png` / `pingloom-wordmark-dark.png`: transparent, lossless GitHub header lockups rendered with the real local Plus Jakarta Sans; README selects the contrasting variant via `<picture>`.
+- `pingloom-wordmark-light.png` / `pingloom-wordmark-dark.png`: transparent, lossless GitHub header lockups rendered with the real local Plus Jakarta Sans; README selects the contrasting variant with GitHub's `#gh-light-mode-only` / `#gh-dark-mode-only` fragments, so the GitHub theme—not merely OS preference—controls it.
 
 ## Direction
 
