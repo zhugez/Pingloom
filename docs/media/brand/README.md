@@ -1,6 +1,6 @@
 # Pingloom brand concept
 
-Concept images generated with Gemini `gemini-3-pro-image`. The reconstructed SVG mark is used for application icons and the Settings header in v0.2.1.
+Concept images generated with Gemini `gemini-3-pro-image`. The reconstructed SVG mark is used for application icons and the Settings header in the consolidated v0.1.0 prerelease.
 
 - `pingloom-logo-concept.png`: logo exploration / wordmark direction.
 - `pingloom-brandkit.png`: identity overview and conceptual desktop applications.
