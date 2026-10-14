@@ -569,7 +569,7 @@ impl App {
                     } else {
                         f32::from(settings.volume) / 200.0
                     };
-                    self.audio.play("sounds/button.wav", volume);
+                    self.audio.play("sounds/button.ogg", volume);
                 }
             }
             Action::Cancel => self.overlay.wheel_close(),
@@ -599,7 +599,7 @@ impl App {
                             if let Some(id) = settings.wheel.get(slot).copied() {
                                 self.overlay.spawn_ping(id, point);
                                 self.audio
-                                    .play(format!("sounds/{}.wav", id.asset().sound), volume);
+                                    .play(format!("sounds/{}.ogg", id.asset().sound), volume);
                             }
                         }
                         WheelKind::Emote => {
@@ -618,7 +618,7 @@ impl App {
                     let id = settings.click_ping_id;
                     self.overlay.spawn_ping(id, point);
                     self.audio
-                        .play(format!("sounds/{}.wav", id.asset().sound), volume);
+                        .play(format!("sounds/{}.ogg", id.asset().sound), volume);
                 }
                 WheelKind::Emote => {
                     let slug = settings.click_emote_id.clone();

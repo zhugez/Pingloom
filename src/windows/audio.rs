@@ -47,3 +47,33 @@ impl Audio {
         let _ = self.sender.send((path.into(), volume));
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::ASSETS;
+
+    #[test]
+    fn every_bundled_sound_decodes() {
+        let names = pingloom_core::PingId::ALL
+            .iter()
+            .map(|id| id.asset().sound)
+            .chain([pingloom_core::model::TICK_SOUND]);
+        for name in names {
+            assert!(
+                ASSETS.get_file(format!("sounds/{name}.ogg")).is_some(),
+                "{name}"
+            );
+        }
+        for dir in ["sounds", "emotes"] {
+            for file in ASSETS.get_dir(dir).unwrap().files() {
+                if file.path().extension().is_some_and(|ext| ext == "ogg") {
+                    assert!(
+                        rodio::Decoder::new(std::io::Cursor::new(file.contents())).is_ok(),
+                        "{}",
+                        file.path().display()
+                    );
+                }
+            }
+        }
+    }
+}

@@ -21,8 +21,14 @@ jobs:
           - os: macos-15
             platform: macos
     runs-on: ${{ matrix.os }}
+    env:
+      # Reproducible-lite: no checkout path in panic strings or debug paths.
+      RUSTFLAGS: --remap-path-prefix=${{ github.workspace }}=/pingloom
     steps:
       - uses: actions/checkout@v4
+      - name: Pin build timestamps to the commit
+        shell: bash
+        run: echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> "$GITHUB_ENV"
       - name: Linux native build dependencies
         if: matrix.platform == 'linux'
         run: |
@@ -37,6 +43,9 @@ jobs:
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: nextest
       - name: Build and test bundled Settings (no runtime Node)
         working-directory: ui
         run: |
@@ -47,7 +56,9 @@ jobs:
       - name: Format
         run: cargo fmt --all -- --check
       - name: Native-target tests
-        run: cargo test --locked --all-targets
+        run: |
+          cargo nextest run --locked --all-targets
+          cargo test --locked --doc
       - name: Native-target Clippy
         run: cargo clippy --locked --all-targets -- -D warnings
       - name: Windows portable executable
@@ -69,7 +80,7 @@ jobs:
         if: matrix.platform == 'linux'
         run: |
           mkdir release
-          tar -czf release/pingloom-linux-x64.tar.gz -C target/release pingloom -C "$GITHUB_WORKSPACE" LICENSE THIRD_PARTY_NOTICES.txt docs/PLATFORMS.md
+          tar --sort=name --mtime="@$SOURCE_DATE_EPOCH" --owner=0 --group=0 --numeric-owner -cf - -C target/release pingloom -C "$GITHUB_WORKSPACE" LICENSE THIRD_PARTY_NOTICES.txt docs/PLATFORMS.md | gzip -n > release/pingloom-linux-x64.tar.gz
           cp target/release/bundle/deb/*.deb release/
       - name: Stage macOS (ad-hoc signed, not notarized)
         if: matrix.platform == 'macos'
@@ -77,10 +88,26 @@ jobs:
           mkdir release
           codesign --force --deep --sign - target/release/bundle/macos/Pingloom.app
           ditto -c -k --sequesterRsrc --keepParent target/release/bundle/macos/Pingloom.app "release/pingloom-macos-$(uname -m).zip"
+      - name: Release decode benchmark
+        shell: bash
+        run: PINGLOOM_BENCH_OUT=bench.json cargo nextest run --locked --release --run-ignored only -E 'test(decode_benchmark)'
+      - name: Performance gate (size fails >5%; decode/RSS warn >10%)
+        shell: bash
+        run: |
+          binary=target/release/pingloom
+          if [ "$RUNNER_OS" = Windows ]; then binary=$binary.exe; py=python; else py=python3; fi
+          $py tools/perf_gate.py ${{ matrix.platform }} "$binary" bench.json "release/perf-${{ matrix.platform }}.json"
       - name: Record build provenance
         shell: bash
         run: |
-          { echo "Commit: $GITHUB_SHA"; rustc -vV; } > "release/BUILD_INFO-${{ matrix.platform }}.txt"
+          {
+            echo "Commit: $GITHUB_SHA"
+            echo "SOURCE_DATE_EPOCH: $SOURCE_DATE_EPOCH"
+            rustc -vV
+            echo
+            cd release && { sha256sum * 2>/dev/null || shasum -a 256 *; }
+          } > BUILD_INFO.txt
+          mv BUILD_INFO.txt "release/BUILD_INFO-${{ matrix.platform }}.txt"
       - uses: actions/upload-artifact@v4
         with:
           name: pingloom-${{ matrix.platform }}

@@ -169,6 +169,80 @@ pub(crate) fn playback_ms(slug: &str, frames: &[AnimatedFrame], elapsed: u32) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Release decode benchmark read by `tools/perf_gate.py`:
+    /// `cargo nextest run --release --run-ignored only -E 'test(decode_benchmark)'`.
+    #[test]
+    #[ignore]
+    fn decode_benchmark() {
+        let mut ms: Vec<f64> = ASSETS
+            .get_dir("emotes")
+            .unwrap()
+            .files()
+            .filter(|file| file.path().extension().is_some_and(|ext| ext == "webp"))
+            .map(|file| {
+                let slug = file.path().file_stem().unwrap().to_str().unwrap();
+                let start = std::time::Instant::now();
+                assert!(decode_emote(slug).unwrap().len() > 1);
+                start.elapsed().as_secs_f64() * 1000.0
+            })
+            .collect();
+        ms.sort_by(f64::total_cmp);
+        let at = |q: f64| ms[((ms.len() - 1) as f64 * q).round() as usize];
+        let report = serde_json::json!({
+            "emotes": ms.len(),
+            "decode_ms_p50": at(0.5),
+            "decode_ms_p95": at(0.95),
+            "peak_rss_mib": peak_rss_mib(),
+        });
+        println!("{report}");
+        if let Some(path) = std::env::var_os("PINGLOOM_BENCH_OUT") {
+            std::fs::write(path, report.to_string()).unwrap();
+        }
+    }
+
+    #[cfg(unix)]
+    fn peak_rss_mib() -> f64 {
+        // ponytail: 64-bit rusage layout (two 16-byte timevals, then ru_maxrss).
+        #[repr(C)]
+        struct Rusage {
+            times: [i64; 4],
+            maxrss: i64,
+            rest: [i64; 13],
+        }
+        extern "C" {
+            fn getrusage(who: i32, usage: *mut Rusage) -> i32;
+        }
+        let mut usage = Rusage {
+            times: [0; 4],
+            maxrss: 0,
+            rest: [0; 13],
+        };
+        assert_eq!(unsafe { getrusage(0, &mut usage) }, 0);
+        // Linux reports KiB, macOS bytes.
+        usage.maxrss as f64
+            / if cfg!(target_os = "macos") {
+                1048576.0
+            } else {
+                1024.0
+            }
+    }
+
+    #[cfg(windows)]
+    fn peak_rss_mib() -> f64 {
+        use windows_sys::Win32::System::{
+            ProcessStatus::{K32GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS},
+            Threading::GetCurrentProcess,
+        };
+        let mut counters: PROCESS_MEMORY_COUNTERS = unsafe { std::mem::zeroed() };
+        counters.cb = std::mem::size_of::<PROCESS_MEMORY_COUNTERS>() as u32;
+        assert_ne!(
+            unsafe { K32GetProcessMemoryInfo(GetCurrentProcess(), &mut counters, counters.cb) },
+            0
+        );
+        counters.PeakWorkingSetSize as f64 / 1048576.0
+    }
+
     #[test]
     fn first_webp_frame_starts_immediately() {
         let frames = decode_emote("facepalm").unwrap();

@@ -43,7 +43,7 @@ focus/argument-forwarding behavior. Different user/settings directories are inde
 
 ## Build/runtime constraints
 
-Windows 11 x64 with Evergreen WebView2 Runtime is required. Missing/unavailable WebView2 prevents Settings startup; build output logs the prerequisite on window creation failure. Node/npm are needed only to build static frontend assets. `build.rs` embeds the frontend distribution; the app has no production Node service. The embedded game assets total approximately 58 MiB, so expect a large executable. No installer/updater is supplied.
+Windows 11 x64 with Evergreen WebView2 Runtime is required. Missing/unavailable WebView2 prevents Settings startup; build output logs the prerequisite on window creation failure. Node/npm are needed only to build static frontend assets. `build.rs` embeds the frontend distribution; the app has no production Node service. The embedded game assets total approximately 55 MiB, so expect a large executable. No installer/updater is supplied.
 
 Build in this order on Windows with Rust stable and Visual Studio 2022 Build Tools/C++ workload:
 
