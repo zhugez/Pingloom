@@ -70,39 +70,15 @@ The Settings window provides complete customization across three focused pages:
 
 > **Note on custom titlebar:** Custom HTML window caption buttons inside WebView2 cannot natively trigger the Windows 11 DWM Snap Layout flyout on hover without Win32 `WM_NCHITTEST` non-client message interception on the top-level HWND.
 
-### Current UI — Sapphire and Catppuccin
+### Current UI
 
-Use the **Color theme** selector in the titlebar and the adjacent light/dark toggle. Default Sapphire follows the OS until you choose explicitly; Catppuccin offers **Latte / Frappé / Macchiato / Mocha** and remembers your dark flavor. Appearance is saved locally immediately, independently of gesture configuration Save.
+Use the **Color theme** selector in the titlebar and the adjacent light/dark toggle (Default Sapphire or Catppuccin Latte / Frappé / Macchiato / Mocha). Appearance is saved locally immediately, independently of gesture configuration Save.
 
-Select a wheel slice, then choose an image from the visual catalog alongside it. Full dropdown assignments remain under **All 8 assignments**. Emotes includes custom PNG/JPG/GIF/WebP import. Display/audio controls and artwork remain available in every palette.
-
-The three-platform `v0.1.0` release also includes shared native ping motion, baked WebP playback without a duplicate animation envelope, and premultiplied-alpha artwork sampling for cleaner edges. These changes preserve gesture timing and settings compatibility.
-
-> **Note on screenshots:** The captures below are rendered UI previews generated against `ui/dist` using the automated headless test harness (`ui/tests/verify-ui.cjs`) with simulated Tauri 2 IPC and native chrome mocks. Captures wait for fonts and finite animations to settle. They are not direct Windows 11 DWM screenshots.
+Select a wheel slice, then choose an image from the visual catalog alongside it. Full dropdown assignments remain under **All 8 assignments**. Emotes includes custom PNG/JPG/GIF/WebP import.
 
 <p align="center">
-  <img src="docs/media/pingloom-pings-preview.png" alt="Pingloom Settings: dark radial wheel and visual ping catalog" width="960" />
+  <img src="docs/media/pingloom-preview.png" alt="Pingloom Settings: Catppuccin Mocha theme with radial wheel and visual catalog" width="960" />
 </p>
-<p align="center">
-  <img src="docs/media/pingloom-triggers-preview.png" alt="Current Sapphire Triggers Settings with theme selector" width="470" />
-  <img src="docs/media/pingloom-emotes-preview.png" alt="Current Emotes Settings with custom image and animation import" width="470" />
-</p>
-
-#### All supported palettes
-
-<p align="center">
-  <img src="docs/media/pingloom-sapphire-dark-preview.png" alt="Default Sapphire — dark" width="440" />
-  <img src="docs/media/pingloom-latte-preview.png" alt="Catppuccin Latte — light" width="440" />
-</p>
-<p align="center">
-  <img src="docs/media/pingloom-frappe-preview.png" alt="Catppuccin Frappé" width="440" />
-  <img src="docs/media/pingloom-macchiato-preview.png" alt="Catppuccin Macchiato" width="440" />
-</p>
-<p align="center">
-  <img src="docs/media/pingloom-mocha-preview.png" alt="Catppuccin Mocha" width="880" />
-</p>
-
-**Maintaining these previews:** with Chromium and `puppeteer-core` available (the browser harness prerequisites), run `npm --prefix ui run preview:readme`. It builds the current UI, runs the browser checks including logo contrast in all six palettes, and refreshes every README screenshot only after the checks pass. Settings/branding changes are not ready to ship until these previews are refreshed with the same build.
 
 ---
 
