@@ -13,7 +13,7 @@ Electron runtime, multiplayer, custom imports, or complete feature set.
   supported. Full dropdown assignments remain in an expandable section, and
   validation opens that section before focusing its field.
 - Dark radial preview and native wheel surfaces make the wheel distinct from the
-  warm Settings shell; rose highlights preserve Pingloom identity.
+  Settings shell; theme accent highlights preserve Pingloom identity.
 - Short panel entrances, selected-icon emphasis and keyed assignment feedback;
   reduced motion removes decorative movement.
 - Native Windows/Unix ping art shares diagonal two-layer convergence, stable
@@ -42,10 +42,10 @@ v0.1.0 release now includes these changes from build commit `f073e22`.
 Warm, quiet desktop utility: flat property groups rather than nested cards. Keep Plus Jakarta Sans locally bundled with Vietnamese, Latin/extended and Cyrillic-extended coverage and OFL attribution.
 
 - Warm white canvas `#FFFDFC`, blush surfaces `#FFF5F5`, charcoal text `#4A4A4A`.
-- Rose `#E2B4BD` primary actions and peach `#F7D6D0` hover feedback.
-- Deep rose `#875563` for interactive accents; separate semantic error, warning and success colors.
+- Default Sapphire `#85C1DC` is the Settings accent, with dark ink on fills and contrasting control boundaries.
+- Settings-only theme controls offer Default Sapphire and the official Catppuccin Latte, Frappé, Macchiato and Mocha palettes; this renderer preference is immediate and independent of native Settings Save.
 - DaisyUI default themes are disabled. Checkbox/range primitives share explicit shell tokens, avoiding stray blue/purple defaults.
-- Dark mode uses warm charcoal surfaces and rose accents; forced-colors and reduced-motion rules remain supported.
+- Theme palettes provide their own dark surfaces and Sapphire accents; forced-colors and reduced-motion rules remain supported.
 - The ribbon-woven P logo appears in Settings, app icons and tray.
 
 ## Layout and typography
@@ -55,7 +55,7 @@ Page headings are 24px; form text is 13px, controls 36px tall. Descriptions use 
 
 Pings/Emotes place an interactive eight-slice wheel on the left and a flat directional editor on the right. Display settings sit below the wheel; audio follows the workspace. Real bundled artwork sits directly on the wedges without rectangular tiles. Names remain available through accessible buttons and the corresponding editor. Emotes has an accessible PNG/JPG/GIF/WebP import input above its picker, explicit size/library limits, asynchronous status/error feedback and disabled import/save while importing. Imported artwork joins the picker and wheel/tap dropdowns; assignment remains a draft until Save. Picker thumbnails stay still (including GIF/WebP); animation runs in the native overlay for its normal three-second lifetime and uses a first-frame fallback for reduced motion. The center denotes cancellation. Selection, duplicate warnings and error states are retained.
 
-At widths up to 760px the workspace becomes a single column; narrow windows use smaller chrome without hiding action buttons. Content scrolls, while navigation and Save/Cancel stay available.
+At widths up to 760px the workspace becomes a single column; narrow windows use smaller chrome without hiding action buttons. Content scrolls, while navigation and Save/Close stay available.
 
 ## Behavior and accessibility
 - Preserve all existing trigger, wheel assignment, size, duration and audio controls.

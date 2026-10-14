@@ -21,6 +21,8 @@
     Save,
     Shield,
     Square,
+    Sun,
+    Moon,
     Volume2,
     X,
   } from '@lucide/svelte';
@@ -40,6 +42,47 @@
     type Settings,
     type Trigger,
   } from './lib/settings';
+
+  type ThemeMode = 'light' | 'dark';
+  type ThemeFamily = 'default' | 'catppuccin';
+  type DarkFlavor = 'frappe' | 'macchiato' | 'mocha';
+  type ThemePreference = { family: ThemeFamily; mode: ThemeMode; darkFlavor: DarkFlavor };
+
+  const THEME_STORAGE_KEY = 'pingloom.ui-theme';
+
+  function readThemePreference(): ThemePreference | null {
+    try {
+      const value: unknown = JSON.parse(localStorage.getItem(THEME_STORAGE_KEY) ?? 'null');
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+      const { family, mode, darkFlavor } = value as Record<string, unknown>;
+      if ((family !== 'default' && family !== 'catppuccin') || (mode !== 'light' && mode !== 'dark') || !['frappe', 'macchiato', 'mocha'].includes(String(darkFlavor))) return null;
+      return { family, mode, darkFlavor: darkFlavor as DarkFlavor };
+    } catch {
+      return null;
+    }
+  }
+
+  function systemPrefersDark() {
+    try { return window.matchMedia('(prefers-color-scheme: dark)').matches; } catch { return false; }
+  }
+
+  function applyTheme(preference: ThemePreference | null, isDark: boolean) {
+    const mode = preference?.mode ?? (isDark ? 'dark' : 'light');
+    const palette = preference?.family === 'catppuccin' ? (mode === 'light' ? 'latte' : preference.darkFlavor) : `default-${mode}`;
+    document.documentElement.dataset.themeFamily = preference?.family ?? 'default';
+    document.documentElement.dataset.themeMode = mode;
+    document.documentElement.dataset.themePalette = palette;
+  }
+
+  const initialThemePreference = readThemePreference();
+  const initialOsDark = systemPrefersDark();
+  let themePreference = $state<ThemePreference | null>(initialThemePreference);
+  let osDark = $state(initialOsDark);
+  const resolvedThemeMode = $derived<ThemeMode>(themePreference?.mode ?? (osDark ? 'dark' : 'light'));
+  const selectedTheme = $derived(themePreference?.family === 'catppuccin' ? (resolvedThemeMode === 'light' ? 'latte' : themePreference.darkFlavor) : 'default');
+  applyTheme(initialThemePreference, initialOsDark);
+
+  $effect(() => applyTheme(themePreference, osDark));
 
   let boot: BootData | null = $state(null);
   let draft: Settings | null = $state(null);
@@ -72,6 +115,12 @@
     let unlistenClose: (() => void) | undefined;
     let unlistenResize: (() => void) | undefined;
     let closing = false;
+    let colorScheme: MediaQueryList | undefined;
+    const onColorSchemeChange = (event: MediaQueryListEvent) => { osDark = event.matches; };
+    try {
+      colorScheme = window.matchMedia('(prefers-color-scheme: dark)');
+      colorScheme.addEventListener('change', onColorSchemeChange);
+    } catch {}
 
     void (async () => {
       try {
@@ -126,6 +175,7 @@
       if (heartbeat) clearInterval(heartbeat);
       unlistenClose?.();
       unlistenResize?.();
+      colorScheme?.removeEventListener('change', onColorSchemeChange);
     };
   });
 
@@ -133,6 +183,26 @@
     if (typeof error === 'string') return error;
     if (error && typeof error === 'object' && 'message' in error) return String(error.message);
     return 'The Settings bridge did not respond. Close and reopen Settings to try again.';
+  }
+
+  function saveThemePreference(next: ThemePreference) {
+    themePreference = next;
+    try { localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify(next)); } catch {}
+  }
+
+  function selectTheme(value: string) {
+    const darkFlavor = themePreference?.darkFlavor ?? 'frappe';
+    if (value === 'default') saveThemePreference({ family: 'default', mode: resolvedThemeMode, darkFlavor });
+    else if (value === 'latte') saveThemePreference({ family: 'catppuccin', mode: 'light', darkFlavor });
+    else if (value === 'frappe' || value === 'macchiato' || value === 'mocha') saveThemePreference({ family: 'catppuccin', mode: 'dark', darkFlavor: value });
+  }
+
+  function toggleThemeMode() {
+    saveThemePreference({
+      family: themePreference?.family ?? 'default',
+      mode: resolvedThemeMode === 'dark' ? 'light' : 'dark',
+      darkFlavor: themePreference?.darkFlavor ?? 'frappe',
+    });
   }
 
   function set(path: keyof Settings, value: unknown) {
@@ -418,6 +488,27 @@
             {boot.status === 'active' ? 'Gestures active' : 'Paused'}
           </span>
         </div>
+      </div>
+
+      <div class="theme-controls" data-no-drag>
+        <label class="sr-only" for="theme-preset">Color theme</label>
+        <select id="theme-preset" class="theme-preset" value={selectedTheme} onchange={(event) => selectTheme(event.currentTarget.value)}>
+          <option value="default">Default Sapphire</option>
+          <option value="latte">Catppuccin Latte</option>
+          <option value="frappe">Catppuccin Frappé</option>
+          <option value="macchiato">Catppuccin Macchiato</option>
+          <option value="mocha">Catppuccin Mocha</option>
+        </select>
+        <button
+          type="button"
+          class="theme-toggle"
+          aria-label={resolvedThemeMode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          title={resolvedThemeMode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          aria-pressed={resolvedThemeMode === 'dark'}
+          onclick={toggleThemeMode}
+        >
+          {#if resolvedThemeMode === 'dark'}<Sun size={16} aria-hidden="true" />{:else}<Moon size={16} aria-hidden="true" />{/if}
+        </button>
       </div>
 
       <!-- Draggable titlebar spacer -->
@@ -1073,9 +1164,9 @@
           class="btn-footer-ghost"
           disabled={saving}
           onclick={cancel}
-          title="Cancel and close (Esc)"
+          title="Close and discard unsaved changes (Esc)"
         >
-          <span>Cancel</span>
+          <span>Close</span>
           <kbd class="kbd-subtle">Esc</kbd>
         </button>
 
@@ -1131,8 +1222,8 @@
       <svg class="radial-svg" viewBox="0 0 280 280" aria-hidden="true" focusable="false">
         <defs>
           <radialGradient id="wheel-surface" cx="50%" cy="50%" r="50%">
-            <stop offset="35%" stop-color="#2a2d31" />
-            <stop offset="100%" stop-color="#4a4e54" />
+            <stop offset="35%" stop-color="var(--wheel-surface-start)" />
+            <stop offset="100%" stop-color="var(--wheel-surface-end)" />
           </radialGradient>
         </defs>
         <circle cx="140" cy="140" r="134" class="radial-outer-boundary" />
