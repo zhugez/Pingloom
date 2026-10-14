@@ -374,7 +374,7 @@ unsafe fn register_main(instance: HINSTANCE) -> Result<(), String> {
         cbClsExtra: 0,
         cbWndExtra: 0,
         hInstance: instance,
-        hIcon: null_mut(),
+        hIcon: LoadIconW(instance, IDI_APPLICATION),
         hCursor: null_mut(),
         hbrBackground: null_mut(),
         lpszMenuName: null(),
@@ -398,7 +398,11 @@ impl App {
         data.uID = 1;
         data.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
         data.uCallbackMessage = WM_TRAY;
-        data.hIcon = LoadIconW(null_mut(), IDI_APPLICATION);
+        // Tauri embeds icons/icon.ico as resource 32512 (IDI_APPLICATION).
+        data.hIcon = LoadIconW(self.instance, IDI_APPLICATION);
+        if data.hIcon.is_null() {
+            return Err("could not load the embedded Pingloom icon".into());
+        }
         let tip: Vec<u16> = "Pingloom — desktop pings and emotes"
             .encode_utf16()
             .chain(std::iter::once(0))

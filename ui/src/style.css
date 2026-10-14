@@ -273,6 +273,10 @@ button:focus-visible {
   border: 1px solid rgba(0, 103, 184, 0.2);
 }
 
+.app-badge img {
+  display: block;
+}
+
 .app-titles {
   display: flex;
   align-items: baseline;
