@@ -357,7 +357,7 @@
   </main>
 {:else}
   <div class="desktop-shell" class:window-hidden={documentHidden}>
-    <!-- Top Utility Header with integrated compact navigation tabs and window controls -->
+    <!-- Native window controls stay separate from Settings navigation. -->
     <header class="desktop-header">
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div
@@ -385,30 +385,6 @@
           </span>
         </div>
       </div>
-
-      <!-- Segmented Desktop Navigation Tabs (strictly non-draggable) -->
-      <nav class="nav-tabs-wrapper" aria-label="Settings pages" data-no-drag>
-        <div class="nav-tabs" role="tablist">
-          {#each pages as item, index}
-            <button
-              type="button"
-              id="tab-{item.id}"
-              data-tab={item.id}
-              role="tab"
-              aria-selected={page === item.id}
-              aria-controls="panel-{item.id}"
-              tabindex={page === item.id ? 0 : -1}
-              class="tab-btn"
-              class:active={page === item.id}
-              onclick={() => changePage(item.id)}
-              onkeydown={(e) => onTabKeydown(e, index)}
-            >
-              <item.icon size={15} strokeWidth={2} />
-              <span>{item.label}</span>
-            </button>
-          {/each}
-        </div>
-      </nav>
 
       <!-- Draggable titlebar spacer -->
       <div
@@ -454,6 +430,29 @@
         </button>
       </div>
     </header>
+
+    <nav class="nav-tabs-wrapper" aria-label="Settings pages" data-no-drag>
+      <div class="nav-tabs" role="tablist">
+        {#each pages as item, index}
+          <button
+            type="button"
+            id="tab-{item.id}"
+            data-tab={item.id}
+            role="tab"
+            aria-selected={page === item.id}
+            aria-controls="panel-{item.id}"
+            tabindex={page === item.id ? 0 : -1}
+            class="tab-btn"
+            class:active={page === item.id}
+            onclick={() => changePage(item.id)}
+            onkeydown={(e) => onTabKeydown(e, index)}
+          >
+            <item.icon size={16} strokeWidth={1.75} />
+            <span>{item.label}</span>
+          </button>
+        {/each}
+      </div>
+    </nav>
 
     <!-- Main Settings Form Area -->
     <main class="desktop-body" id="settings-content">
