@@ -61,7 +61,7 @@ At widths up to 760px the workspace becomes a single column; narrow windows use 
 - Preserve all existing trigger, wheel assignment, size, duration and audio controls.
 - Arrow/Home/End keys navigate tabs; Escape cancels; invalid fields receive focus on the correct page.
 - Wheel selection focuses its editor; duplicate assignments receive explicit warnings.
-- Opening Settings suspends gestures; close/failure resumes according to native lifecycle state.
+- Opening/closing Settings does not pause, cancel or resume gestures. Explicit pause and native safety failures remain authoritative. A bounded owner-queue barrier prevents late accepted saves from crossing into a reopened session. Saving safely cancels an in-progress gesture before applying settings; drafts are not live. The header refreshes active/paused status on the five-second heartbeat.
 - Save remains canonical Rust validation followed by atomic persistence and native apply.
 - Capability and command guards restrict access to the bundled Settings document and label, including Tauri's empty root-document path. No arbitrary filesystem paths or remote navigation.
 - Reduced motion preserves wheel positioning and focus feedback while suppressing decorative motion. Hidden-window spinner behavior remains bounded.

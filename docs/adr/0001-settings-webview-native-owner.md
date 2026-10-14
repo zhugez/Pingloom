@@ -10,7 +10,22 @@ The approved Settings frontend uses Svelte 5/Vite/Tailwind/daisyUI in a Tauri 2 
 Use one bundled local Settings WebView, with Tauri owning its UI loop. Keep hooks and all gesture/runtime state on a separate pumped Win32 owner thread. Communicate via bounded, owned, validated commands and replies; only that owner validates/applies/persists settings. Require WebView2 Evergreen on Windows 11. Restrict the capability to Settings and a local origin; no remote navigation, server, shell/filesystem plugin, or arbitrary paths. Native overlays and tray remain native.
 
 ## Consequences
-Node/npm are build-time only; Vite output is bundled as local files. Embedded assets already total about 58 MiB, so a tiny 2–4 MiB executable is not credible. Settings suspension must acknowledge replay before display and resume idempotently on close/failure. Tauri/WebView2 lifecycle, renderer recovery and all Windows behavior require real Windows verification.
+Node/npm are build-time only; Vite output is bundled as local files. Embedded assets already total about 58 MiB, so a tiny 2–4 MiB executable is not credible. The original Settings suspension rule is superseded by the user-approved concurrent-gesture amendment below. Tauri/WebView2 lifecycle, renderer recovery and all Windows behavior require real Windows verification.
+
+## Amendment: concurrent Settings and gestures
+
+The user explicitly requested ping/emote gestures while Settings remains open.
+Opening and closing Settings therefore no longer suspend/cancel/resume native input.
+Native manual pause, fullscreen suppression, permission/replay failures and shutdown
+safety remain authoritative. Drafts apply only on Save; applying a valid saved
+configuration safely cancels any gesture in progress without changing manual pause.
+
+Keep generation/session admission and definitive Save completion. Replace the old
+suspension messages with FIFO owner barriers: opening confirms owner availability;
+close/recovery drains previously accepted Save requests before a new generation can
+open. Legacy resume-named lifecycle phases now mean barrier pending/in-flight, not
+input resume. Heartbeats refresh active/paused status every five seconds. This
+amends only the input suspension policy, not the Settings-only WebView architecture.
 
 ## Implementation status
 Tauri config/bootstrap, scoped capability, local navigation/CSP, bundled UI, command bridge and owner mailbox are integrated. The active tray path uses the WebView Settings window; native Settings source remains dormant. Host checks and Windows-target compile/link evidence do not certify behavior on Windows. Evergreen WebView2 startup, close/watchdog/renderer failure, orderly shutdown, DPI and visual/accessibility behavior still require the Windows smoke checklist; do not interpret integration as runtime acceptance.

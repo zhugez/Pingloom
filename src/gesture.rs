@@ -113,7 +113,8 @@ impl GestureEngine {
         decision
     }
 
-    /// Suspending for settings uses the same safe recovery as an explicit pause.
+    /// Safety suspension (for shutdown) uses the same recovery as an explicit pause.
+    /// Opening Settings does not use this operation.
     pub fn set_suspended(&mut self, suspended: bool) -> InputDecision {
         let mut decision = InputDecision::default();
         if suspended {
@@ -807,6 +808,29 @@ mod tests {
     }
 
     #[test]
+    fn saving_active_settings_cancels_balances_and_keeps_manual_pause() {
+        let mut engine = engine();
+        open_wheel(&mut engine);
+        let mut settings = engine.settings().clone();
+        settings.volume = 37;
+        let saved = engine.set_settings(settings.clone()).unwrap();
+        assert_eq!(saved.actions, [Action::Cancel]);
+        assert!(engine.enabled());
+        assert!(engine.on_event(up(Button::Left, 120, 100, 120)).swallow);
+        engine.on_event(key_up(ALT));
+        open_wheel(&mut engine);
+        assert!(matches!(
+            engine.on_event(up(Button::Left, 100, 0, 130)).actions[0],
+            Action::Select { .. }
+        ));
+        engine.on_event(key_up(ALT));
+        engine.set_enabled(false);
+        engine.set_settings(settings).unwrap();
+        assert!(!engine.enabled());
+        assert!(!engine.on_event(down(Button::Left, 100, 100, 140)).swallow);
+    }
+
+    #[test]
     fn trigger_release_replays_tap_and_masks_alt_menu_keyup() {
         let mut engine = engine();
         engine.on_event(key_down(ALT));
@@ -873,7 +897,7 @@ mod tests {
     }
 
     #[test]
-    fn explicit_settings_pause_recovers_lost_trigger_release_safely() {
+    fn safety_suspension_recovers_lost_trigger_release_safely() {
         let settings = Settings {
             trigger: Trigger::Key { vk: b'Q' },
             emote_trigger: None,
@@ -890,7 +914,7 @@ mod tests {
             }
         );
 
-        // The physical key-up is lost; opening settings explicitly pauses and cancels the wheel.
+        // The physical key-up is lost; a safety suspension cancels the wheel.
         assert_eq!(engine.set_suspended(true).actions, [Action::Cancel]);
         assert_eq!(engine.state(), GestureState::SwallowUp);
         engine.set_suspended(false);

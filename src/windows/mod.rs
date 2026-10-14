@@ -104,7 +104,6 @@ struct App {
     tray_added: bool,
     shutting_down: bool,
     mailbox: Arc<OwnerMailbox>,
-    settings_suspended: bool,
     load_warning: Option<String>,
     app_handle: tauri::AppHandle,
     desktop_state: Arc<desktop_settings::DesktopSettingsState>,
@@ -189,7 +188,6 @@ unsafe fn run_inner(
         tray_added: false,
         shutting_down: false,
         mailbox: Arc::clone(mailbox),
-        settings_suspended: false,
         load_warning,
         app_handle,
         desktop_state,
@@ -420,9 +418,7 @@ impl App {
         if !self.tray_added {
             return;
         }
-        let state = if self.settings_suspended {
-            "Settings open — gestures paused"
-        } else if self.engine.enabled() {
+        let state = if self.engine.enabled() {
             "Gestures active"
         } else {
             "Gestures paused"
@@ -706,7 +702,6 @@ impl App {
     fn owner_status(&self) -> RuntimeStatus {
         RuntimeStatus {
             enabled: self.engine.enabled(),
-            settings_suspended: self.settings_suspended,
             load_warning: self.load_warning.clone(),
         }
     }
@@ -717,17 +712,9 @@ impl App {
                 OwnerRequest::Query(reply) => {
                     let _ = reply.send(Ok((self.settings().clone(), self.owner_status())));
                 }
-                OwnerRequest::Suspend(suspended, reply) => {
-                    if self.settings_suspended != suspended {
-                        let decision = self.engine.set_suspended(suspended);
-                        self.apply_decision(decision, false, None);
-                        if suspended {
-                            self.drain_injections();
-                        }
-                        self.settings_suspended = suspended;
-                        self.update_tray_status();
-                    }
-                    let _ = reply.send(Ok(self.owner_status()));
+                OwnerRequest::Barrier(reply) => {
+                    // Settings lifecycle orders requests, but never pauses or cancels input.
+                    let _ = reply.send(Ok(()));
                 }
                 OwnerRequest::Save(settings, reply) => {
                     let settings = *settings;
@@ -975,20 +962,13 @@ unsafe fn handle_tray_message(event: u32) {
         return;
     }
     AppendMenuW(menu, MF_STRING, ID_SETTINGS as usize, w!("Settings"));
-    let settings_open = (*app).settings_suspended;
-    let status = if settings_open {
-        w!("Gestures paused while Settings is open")
-    } else if (*app).engine.enabled() {
+    let status = if (*app).engine.enabled() {
         w!("Gestures active")
     } else {
         w!("Gestures paused")
     };
     AppendMenuW(menu, MF_STRING | MF_GRAYED, 0, status);
-    let toggle = if settings_open && (*app).engine.enabled() {
-        w!("Disable gestures when Settings closes")
-    } else if settings_open {
-        w!("Enable gestures when Settings closes")
-    } else if (*app).engine.enabled() {
+    let toggle = if (*app).engine.enabled() {
         w!("Pause gestures")
     } else {
         w!("Resume gestures")

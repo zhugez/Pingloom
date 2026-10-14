@@ -1,5 +1,5 @@
 use super::runtime_mailbox::{
-    wait_reply, wait_save_reply, wait_suspend_reply, OwnerError, OwnerMailbox, RuntimeStatus,
+    wait_barrier_reply, wait_reply, wait_save_reply, OwnerError, OwnerMailbox, RuntimeStatus,
 };
 use crate::settings_lifecycle::Lifecycle;
 use pingloom_core::model::{EMOTE_ASSETS, PING_ASSETS};
@@ -100,14 +100,7 @@ fn trusted_document(label: &str, url: &tauri::Url) -> Result<(), Rejection> {
     Ok(())
 }
 fn status(s: RuntimeStatus) -> String {
-    if s.settings_suspended {
-        "settings_suspended"
-    } else if s.enabled {
-        "active"
-    } else {
-        "paused"
-    }
-    .into()
+    if s.enabled { "active" } else { "paused" }.into()
 }
 fn mailbox(state: &DesktopSettingsState) -> Result<Arc<OwnerMailbox>, Rejection> {
     state
@@ -270,7 +263,7 @@ pub(crate) async fn settings_heartbeat<R: Runtime>(
     window: WebviewWindow<R>,
     state: tauri::State<'_, Arc<DesktopSettingsState>>,
     session_id: String,
-) -> Result<(), Rejection> {
+) -> Result<String, Rejection> {
     trusted(&window)?;
     if session_id.len() > 64 {
         return Err(Rejection {
@@ -298,7 +291,13 @@ pub(crate) async fn settings_heartbeat<R: Runtime>(
             request_id: None,
         });
     }
-    Ok(())
+    let rx = mailbox(&state)?.query().map_err(Rejection::from)?;
+    let (_, run_status) = tauri::async_runtime::spawn_blocking(move || wait_reply(rx))
+        .await
+        .map_err(|e| Rejection::from(OwnerError::unavailable(e.to_string())))?
+        .map_err(Rejection::from)?;
+    check_session(&state, &session_id)?;
+    Ok(status(run_status))
 }
 #[tauri::command(rename_all = "snake_case")]
 pub(crate) async fn close_settings<R: Runtime>(
@@ -644,7 +643,7 @@ fn drive_resume(state: Arc<DesktopSettingsState>) {
     let state_done = Arc::clone(&state);
     tauri::async_runtime::spawn_blocking(move || {
         let acknowledged = match mb {
-            Ok(mb) => mb.suspend(false).and_then(wait_suspend_reply).is_ok(),
+            Ok(mb) => mb.barrier().and_then(wait_barrier_reply).is_ok(),
             Err(_) => false,
         };
         if let Ok(mut l) = state_done.lifecycle.lock() {
@@ -724,7 +723,7 @@ pub(crate) fn schedule_open(app: AppHandle, state: Arc<DesktopSettingsState>) {
             return;
         }
     };
-    let rx = match mb.suspend(true) {
+    let rx = match mb.barrier() {
         Ok(rx) => rx,
         Err(_) => {
             if let Ok(mut l) = state.lifecycle.lock() {
@@ -734,7 +733,7 @@ pub(crate) fn schedule_open(app: AppHandle, state: Arc<DesktopSettingsState>) {
         }
     };
     tauri::async_runtime::spawn_blocking(move || {
-        if wait_suspend_reply(rx).is_err() {
+        if wait_barrier_reply(rx).is_err() {
             if let Ok(mut l) = state.lifecycle.lock() {
                 l.need_resume(generation);
             }

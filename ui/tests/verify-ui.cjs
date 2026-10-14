@@ -195,7 +195,7 @@ function findChrome() {
       window.__tauri_mock = {
         catalog: initialCatalog,
         settings: JSON.parse(JSON.stringify(initSettings)),
-        status: 'settings_suspended',
+        status: 'active',
         session_id: 'test-session-123',
       };
 
@@ -219,7 +219,7 @@ function findChrome() {
           }
           if (cmd === 'settings_heartbeat') {
             window.__heartbeatCount = (window.__heartbeatCount || 0) + 1;
-            return null;
+            return window.__tauri_mock.status;
           }
           if (cmd === 'close_settings') {
             window.__closedCount = (window.__closedCount || 0) + 1;
@@ -300,11 +300,11 @@ function findChrome() {
       throw new Error(`Unexpected runtime warning banner present: ${warningText.trim()}`);
     }
 
-    // Assert status indicator displays Settings open (settings_suspended)
+    // Opening Settings leaves gestures active; no implicit suspension.
     const statusLabel = await page.$eval('.status-label', el => el.textContent.trim());
     console.log('Status indicator text:', statusLabel);
-    if (statusLabel !== 'Settings open') {
-      throw new Error(`Expected 'Settings open', got '${statusLabel}'`);
+    if (statusLabel !== 'Gestures active') {
+      throw new Error(`Expected 'Gestures active', got '${statusLabel}'`);
     }
 
     // Assert initial page: Triggers
@@ -313,6 +313,12 @@ function findChrome() {
     if (!triggersHeading.includes('Triggers')) {
       throw new Error(`Expected Triggers heading, got ${triggersHeading}`);
     }
+
+    // Tray/hotkey changes are reflected without overwriting the Settings draft.
+    await page.evaluate(() => { window.__tauri_mock.status = 'paused'; });
+    await page.waitForFunction(() => document.querySelector('.status-label').textContent.trim() === 'Paused', { timeout: 7000 });
+    await page.evaluate(() => { window.__tauri_mock.status = 'active'; });
+    await page.waitForFunction(() => document.querySelector('.status-label').textContent.trim() === 'Gestures active', { timeout: 7000 });
 
     // Verify gesture copy is present
     const gestureCopy = await page.$eval('.gesture-banner', el => el.textContent);

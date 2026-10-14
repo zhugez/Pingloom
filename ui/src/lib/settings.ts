@@ -26,7 +26,7 @@ export interface BootData {
   session_id: string;
   platform?: 'windows' | 'linux' | 'macos';
   settings: Settings;
-  status: 'active' | 'paused' | 'settings_suspended';
+  status: 'active' | 'paused';
   catalog: { pings: CatalogEntry[]; emotes: CatalogEntry[]; trigger_keys?: number[] };
   load_warning: string | null;
 }
