@@ -9,7 +9,11 @@ mod animation;
 #[path = "windows/assets.rs"]
 mod assets;
 #[cfg(feature = "desktop")]
+mod custom_emotes;
+#[cfg(feature = "desktop")]
 mod raster;
+#[cfg(any(feature = "desktop", test))]
+mod single_instance;
 
 #[cfg(any(feature = "desktop", test))]
 #[path = "windows/settings_lifecycle.rs"]
@@ -28,6 +32,7 @@ fn main() {
         mpsc, Arc, Mutex,
     };
     use std::time::Duration;
+    use tauri::Manager;
     use windows::desktop_settings::{install, DesktopSettingsState};
     use windows::runtime_mailbox::OwnerMailbox;
 
@@ -41,6 +46,12 @@ fn main() {
     let done_setup = Arc::clone(&owner_done);
     let result = install(tauri::Builder::default(), Arc::clone(&desktop_state))
         .setup(move |app| {
+            let roaming = std::env::var_os("APPDATA").ok_or("APPDATA unavailable")?;
+            let path = pingloom_core::settings::resolve_settings_path(roaming);
+            custom_emotes::initialize(&path);
+            app.manage(single_instance::acquire(
+                path.parent().ok_or("settings directory unavailable")?,
+            )?);
             let (ready_tx, ready_rx) = mpsc::channel();
             let (finished_tx, finished_rx) = mpsc::channel();
             let owner_mailbox = Arc::clone(&mailbox_setup);

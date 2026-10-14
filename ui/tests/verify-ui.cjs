@@ -217,6 +217,12 @@ function findChrome() {
               load_warning: null,
             };
           }
+          if (cmd === 'import_emote') {
+            window.__importCalls = (window.__importCalls || 0) + 1;
+            if (window.__rejectImport) { window.__rejectImport = false; throw { message: 'Invalid PNG.' }; }
+            if (typeof args.data !== 'string' || args.data.length < 12 || !args.session_id) throw { message: 'Invalid import payload.' };
+            return { id: 'custom_0000000000000001', name: 'Custom 000001', preview_url: 'data:image/png;base64,' + args.data };
+          }
           if (cmd === 'settings_heartbeat') {
             window.__heartbeatCount = (window.__heartbeatCount || 0) + 1;
             return window.__tauri_mock.status;
@@ -419,6 +425,19 @@ function findChrome() {
       throw new Error(`Expected Emotes heading, got ${emotesHeading}`);
     }
 
+    const importFile = path.join(ASSETS_DIR, 'emotes', 'facepalm.png');
+    const customPicker = await page.$('#custom-emote-file');
+    await customPicker.uploadFile(importFile);
+    await page.waitForFunction(() => document.querySelector('#custom-emote-message').textContent.includes('Imported to your local library'));
+    const customChoices = await page.$$eval('option[value="custom_0000000000000001"]', options => options.length);
+    if (customChoices !== 8) throw new Error(`Custom emote missing from wheel/tap choices: ${customChoices}`);
+    await page.evaluate(() => { window.__rejectImport = true; });
+    await customPicker.uploadFile(importFile);
+    await page.waitForFunction(() => document.querySelector('#custom-emote-message').textContent.includes('Invalid PNG.'));
+    await customPicker.uploadFile(importFile);
+    await page.waitForFunction(() => document.querySelector('#custom-emote-message').textContent.includes('Imported to your local library'));
+    if (await page.$$eval('option[value="custom_0000000000000001"]', options => options.length) !== customChoices) throw new Error('Duplicate import duplicated catalog entries');
+
     // Capture Emotes screenshot (960x720)
     await capture(page, '03-emotes-960x720.png');
     console.log('Saved 03-emotes-960x720.png');
@@ -434,12 +453,17 @@ function findChrome() {
     await capture(page, '05-small-720x600-pings.png');
     console.log('Saved 05-small-720x600-pings.png');
 
+    await page.click('#tab-triggers');
+    await page.click('[data-field="emote_click"]');
+    await page.select('#click-emote-id', 'custom_0000000000000001');
+
     // 6. Test Save Payload (current draft, clean object without Proxy)
     console.log('Testing Save changes...');
     await page.click('.btn-footer-primary');
     await page.waitForSelector('.status-msg.success', { timeout: 2000 });
 
     const saved = await page.evaluate(() => window.__savedCandidate);
+    if (!saved.emote_wheel.includes('custom_0000000000000001') || saved.click_emote_id !== 'custom_0000000000000001') throw new Error('Custom wheel/tap assignment missing from Save payload');
     console.log('Saved candidate wheel[2]:', saved.wheel[2]);
     if (saved.wheel[2] !== 'danger') {
       throw new Error(`Expected saved wheel[2] to be 'danger', got ${saved.wheel[2]}`);

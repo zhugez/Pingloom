@@ -297,8 +297,17 @@ fn is_unsafe_trigger_vk(vk: u8) -> bool {
     matches!(vk, 0x08 | 0x09 | 0x0d | 0x1b | 0x20 | 0x25..=0x28)
 }
 
+/// Reserved, path-safe IDs for the local custom PNG library; legacy schema stays v1.
+pub fn is_custom_emote(id: &str) -> bool {
+    id.strip_prefix("custom_").is_some_and(|suffix| {
+        suffix.len() == 16
+            && suffix
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    })
+}
 fn is_emote(id: &str) -> bool {
-    EMOTE_ASSETS.contains(&id)
+    EMOTE_ASSETS.contains(&id) || is_custom_emote(id)
 }
 
 fn has_duplicates<T: Eq>(values: &[T]) -> bool {
@@ -312,6 +321,29 @@ fn has_duplicates<T: Eq>(values: &[T]) -> bool {
 mod tests {
     use super::*;
     use crate::model::{DEFAULT_EMOTE_WHEEL, DEFAULT_PING_WHEEL};
+
+    #[test]
+    fn custom_emote_ids_keep_schema_v1_and_reject_paths_or_malformed_names() {
+        let mut settings = Settings::default();
+        settings.emote_wheel[0] = "custom_0123456789abcdef".into();
+        settings.click_emote_id = settings.emote_wheel[0].clone();
+        settings.validate().unwrap();
+        assert_eq!(
+            serde_json::from_str::<Settings>(&serde_json::to_string(&settings).unwrap()).unwrap(),
+            settings
+        );
+        for id in [
+            "custom_../secret",
+            "custom_0123456789abcdeF",
+            "custom_0123456789abcdef.png",
+            "custom_",
+            "unknown",
+        ] {
+            assert!(!is_custom_emote(id));
+            settings.click_emote_id = id.into();
+            assert!(settings.validate().is_err());
+        }
+    }
 
     #[test]
     fn defaults_match_upstream_wheel_layouts_and_shortcut() {

@@ -142,6 +142,8 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let app = desktop_settings::install(tauri::Builder::default(), desktop)
         .setup(move |app| {
             let path = app.path().config_dir()?.join("pingloom").join("settings.json");
+            app.manage(crate::single_instance::acquire(path.parent().ok_or("settings directory unavailable")?)?);
+            crate::custom_emotes::initialize(&path);
             let (settings, warning) = match Settings::load(&path) {
                 Ok(settings) => (settings, None),
                 Err(error) => (Settings::default(), Some(format!("Could not load settings; existing file was preserved: {error}"))),

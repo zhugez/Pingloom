@@ -46,6 +46,8 @@
   let page: 'triggers' | 'pings' | 'emotes' = $state('triggers');
   let loading = $state(true);
   let saving = $state(false);
+  let importing = $state(false);
+  let importMessage = $state('');
   let sessionAlive = $state(true);
   let loadError = $state('');
   let saveMessage = $state('');
@@ -248,7 +250,7 @@
   }
 
   async function save() {
-    if (!boot || !draft || saving || !sessionAlive) return;
+    if (!boot || !draft || saving || importing || !sessionAlive) return;
     saving = true;
     errors = {};
     saveMessage = '';
@@ -288,6 +290,35 @@
       }
     } finally {
       saving = false;
+    }
+  }
+
+  async function importEmote(event: Event) {
+    const input = event.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file || !boot || !draft || importing || saving || !sessionAlive) return;
+    const session = boot.session_id;
+    const slot = focusedSlotIndex ?? 0;
+    importing = true;
+    importMessage = '';
+    try {
+      if (file.size > 8 * 1024 * 1024) throw new Error('Choose a PNG up to 8 MiB.');
+      const data = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error('Could not read this image.'));
+        reader.onload = () => resolve(String(reader.result).split(',')[1]);
+        reader.readAsDataURL(file);
+      });
+      const entry = await invoke<CatalogEntry>('import_emote', { session_id: session, data });
+      if (!sessionAlive || boot?.session_id !== session || !draft) return;
+      if (!boot.catalog.emotes.some(item => item.id === entry.id)) boot.catalog.emotes.push(entry);
+      if (!draft.emote_wheel.includes(entry.id)) setWheel('emote_wheel', slot, entry.id);
+      importMessage = 'Imported to your local library. Save changes to apply the assignment.';
+    } catch (error) {
+      if (sessionAlive && boot?.session_id === session) importMessage = error instanceof Error ? error.message : (error as FieldError)?.message || 'Import failed.';
+    } finally {
+      importing = false;
+      input.value = '';
     }
   }
 
@@ -915,7 +946,7 @@
           <div role="tabpanel" id="panel-emotes" aria-labelledby="tab-emotes" tabindex="0" class="page-panel">
             <div class="panel-header">
               <h1>Emotes</h1>
-              <p>Assign League emotes to the 8-directional wheel and configure display scale and audio.</p>
+              <p>Assign bundled or custom emotes to the 8-directional wheel and configure display scale and audio.</p>
             </div>
 
             <!-- Two-Column Desktop Layout: Preview + Controls -->
@@ -938,6 +969,10 @@
                     <h2 id="heading-emote-slices">Choose an emote</h2>
                   </div>
                   <div class="card-body">
+                    <label for="custom-emote-file" class="field-label">Import custom emote</label>
+                    <input id="custom-emote-file" type="file" accept="image/png,.png" class="file-input file-input-sm w-full" onchange={importEmote} disabled={importing || saving || !sessionAlive} aria-describedby="custom-emote-help custom-emote-message" />
+                    <p id="custom-emote-help" class="field-help">PNG only · up to 8 MiB / 2048×2048. Stored locally at up to 512px; 16 custom images. No custom animation or sound yet.</p>
+                    <p id="custom-emote-message" class="field-help" role="status">{importing ? 'Importing…' : importMessage}</p>
                     {@render AssetPicker('emote_wheel', catalog('emotes'), draft.emote_wheel)}
                     <details class="slot-details">
                       <summary>All 8 assignments</summary>
@@ -1047,7 +1082,7 @@
         <button
           type="button"
           class="btn-footer-primary"
-          disabled={saving || !sessionAlive}
+          disabled={saving || importing || !sessionAlive}
           onclick={save}
         >
           {#if saving}
