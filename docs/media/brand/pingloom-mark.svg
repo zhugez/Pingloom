@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 480" role="img" aria-labelledby="title desc">
+  <title id="title">Pingloom</title>
+  <desc id="desc">A ribbon-woven P with an outward opening in its circular bowl.</desc>
+  <defs>
+    <mask id="weave" maskUnits="userSpaceOnUse" x="0" y="0" width="480" height="480">
+      <rect width="480" height="480" fill="white"/>
+      <path d="M80 348 220 244" fill="none" stroke="black" stroke-width="72"/>
+    </mask>
+  </defs>
+  <g fill="#4A4A4A" mask="url(#weave)">
+    <rect x="100" y="204" width="64" height="244" rx="8"/>
+    <path d="M322.56 115.14A116 116 0 1 0 336.86 129.44" fill="none" stroke="#4A4A4A" stroke-width="64"/>
+  </g>
+  <path d="M80 348 220 244" fill="none" stroke="#E2B4BD" stroke-width="56"/>
+</svg>
