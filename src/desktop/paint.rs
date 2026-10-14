@@ -154,7 +154,7 @@ fn install(
         let frame = latest.lock().unwrap().clone();
         if let Some(frame) = frame {
             let mut pixels = frame.image.as_raw().clone();
-            for pixel in pixels.chunks_exact_mut(4) {
+            for pixel in pixels.as_chunks_mut::<4>().0 {
                 let alpha = pixel[3] as u16;
                 let r = (pixel[0] as u16 * alpha / 255) as u8;
                 let g = (pixel[1] as u16 * alpha / 255) as u8;
