@@ -145,7 +145,7 @@ fn button(kind: CGEventType, event: &CGEvent) -> Option<(Button, bool)> {
                 4 => Button::X2,
                 _ => return None,
             };
-            Some((button, kind == CGEventType::OtherMouseDown))
+            Some((button, matches!(kind, CGEventType::OtherMouseDown)))
         }
         _ => None,
     }
@@ -242,7 +242,7 @@ pub(super) fn run(shared: Arc<Shared>) -> Result<(), String> {
         if event.get_integer_value_field(EventField::EVENT_SOURCE_USER_DATA)==MARKER || event.get_integer_value_field(EventField::EVENT_SOURCE_UNIX_PROCESS_ID)>0{return CallbackResult::Keep;}
         let location=event.location();let point=Point::new(location.x.round() as i32,location.y.round() as i32);let time_ms=callback.time_ms();
         let native=match kind{
-            CGEventType::KeyDown|CGEventType::KeyUp=>Some(if kind==CGEventType::KeyDown{InputEvent::KeyDown{vk:vk(event.get_integer_value_field(EventField::KEYBOARD_EVENT_KEYCODE) as u16),injected:false}}else{InputEvent::KeyUp{vk:vk(event.get_integer_value_field(EventField::KEYBOARD_EVENT_KEYCODE) as u16),injected:false}}),
+            CGEventType::KeyDown|CGEventType::KeyUp=>Some(if matches!(kind,CGEventType::KeyDown){InputEvent::KeyDown{vk:vk(event.get_integer_value_field(EventField::KEYBOARD_EVENT_KEYCODE) as u16),injected:false}}else{InputEvent::KeyUp{vk:vk(event.get_integer_value_field(EventField::KEYBOARD_EVENT_KEYCODE) as u16),injected:false}}),
             CGEventType::FlagsChanged=>{
                 let code=event.get_integer_value_field(EventField::KEYBOARD_EVENT_KEYCODE) as u16;
                 if code==57{return CallbackResult::Keep;}
