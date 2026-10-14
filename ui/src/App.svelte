@@ -81,7 +81,9 @@
           if (!boot || heartbeatPending || !sessionAlive) return;
           heartbeatPending = true;
           try {
-            await invoke('settings_heartbeat', { session_id: boot.session_id });
+            const session = boot.session_id;
+            const runtimeStatus = await invoke<BootData['status']>('settings_heartbeat', { session_id: session });
+            if (boot?.session_id === session && sessionAlive) boot.status = runtimeStatus;
           } catch (error) {
             sessionAlive = false;
             loadError = `Settings session expired: ${messageOf(error)}`;
@@ -378,12 +380,11 @@
         <div
           class="status-indicator"
           class:paused={boot.status === 'paused'}
-          class:suspended={boot.status === 'settings_suspended'}
           title="Gesture engine status"
         >
           <span class="status-dot"></span>
           <span class="status-label">
-            {boot.status === 'active' ? 'Gestures active' : boot.status === 'paused' ? 'Paused' : 'Settings open'}
+            {boot.status === 'active' ? 'Gestures active' : 'Paused'}
           </span>
         </div>
       </div>

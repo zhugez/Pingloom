@@ -15,6 +15,8 @@ enum Phase {
     Opening(Generation),
     Live(Live),
     Closing(Live),
+    // Legacy names: these now mean owner-barrier pending/in-flight, not input resume.
+    // Reopen waits for accepted saves to finish without changing gesture state.
     ResumePending(Generation),
     Resuming(Generation),
 }

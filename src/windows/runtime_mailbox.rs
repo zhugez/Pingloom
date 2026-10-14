@@ -15,7 +15,6 @@ const CAPACITY: usize = 16;
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct RuntimeStatus {
     pub enabled: bool,
-    pub settings_suspended: bool,
     pub load_warning: Option<String>,
 }
 
@@ -42,7 +41,8 @@ pub(crate) type StatusReply = mpsc::Receiver<Result<RuntimeStatus, OwnerError>>;
 
 pub(crate) enum OwnerRequest {
     Query(mpsc::Sender<Result<QueryResult, OwnerError>>),
-    Suspend(bool, mpsc::Sender<Result<RuntimeStatus, OwnerError>>),
+    // Orders Settings lifecycle transitions after accepted saves without touching input.
+    Barrier(mpsc::Sender<Result<(), OwnerError>>),
     Save(
         Box<Settings>,
         mpsc::Sender<Result<RuntimeStatus, OwnerError>>,
@@ -142,9 +142,11 @@ impl OwnerMailbox {
         self.enqueue(OwnerRequest::Query(tx))?;
         Ok(rx)
     }
-    pub(crate) fn suspend(self: &Arc<Self>, value: bool) -> Result<StatusReply, OwnerError> {
+    pub(crate) fn barrier(
+        self: &Arc<Self>,
+    ) -> Result<mpsc::Receiver<Result<(), OwnerError>>, OwnerError> {
         let (tx, rx) = mpsc::channel();
-        self.enqueue(OwnerRequest::Suspend(value, tx))?;
+        self.enqueue(OwnerRequest::Barrier(tx))?;
         Ok(rx)
     }
     pub(crate) fn save(self: &Arc<Self>, settings: Settings) -> Result<StatusReply, OwnerError> {
@@ -167,10 +169,10 @@ fn reject_request(request: OwnerRequest, message: &str) {
         OwnerRequest::Query(tx) => {
             let _ = tx.send(Err(error()));
         }
-        OwnerRequest::Suspend(_, tx) | OwnerRequest::Save(_, tx) => {
+        OwnerRequest::Save(_, tx) => {
             let _ = tx.send(Err(error()));
         }
-        OwnerRequest::Quit(tx) => {
+        OwnerRequest::Barrier(tx) | OwnerRequest::Quit(tx) => {
             let _ = tx.send(Err(error()));
         }
     }
@@ -181,12 +183,12 @@ pub(crate) fn wait_reply<T>(rx: mpsc::Receiver<Result<T, OwnerError>>) -> Result
         .map_err(|_| OwnerError::unavailable("native owner reply timed out"))?
 }
 
-// Accepted suspension must retain its reply until the owner confirms the transition.
-pub(crate) fn wait_suspend_reply<T>(
-    rx: mpsc::Receiver<Result<T, OwnerError>>,
-) -> Result<T, OwnerError> {
+// Keep lifecycle admission ordered after all previously accepted owner requests.
+pub(crate) fn wait_barrier_reply(
+    rx: mpsc::Receiver<Result<(), OwnerError>>,
+) -> Result<(), OwnerError> {
     rx.recv().map_err(|_| {
-        OwnerError::unavailable("native owner disconnected before confirming suspension")
+        OwnerError::unavailable("native owner disconnected before confirming Settings barrier")
     })?
 }
 
@@ -208,6 +210,83 @@ mod tests {
 
     fn fake_wake(_: isize) -> bool {
         true
+    }
+
+    #[test]
+    fn lifecycle_barriers_preserve_manual_pause_and_order_accepted_saves() {
+        use crate::settings_lifecycle::Lifecycle;
+        use pingloom_core::GestureEngine;
+        let mailbox = OwnerMailbox::with_wake(fake_wake);
+        mailbox.publish_owner(1);
+        let mut engine = GestureEngine::new(Settings::default()).unwrap();
+        for enabled in [true, false] {
+            engine.set_enabled(enabled);
+            let mut lifecycle = Lifecycle::default();
+            let generation = lifecycle.reserve_open().unwrap();
+            // An already-held gesture must also survive opening Settings.
+            use pingloom_core::{Button, InputEvent, Point};
+            engine.on_event(InputEvent::KeyDown {
+                vk: 0x12,
+                injected: false,
+            });
+            engine.on_event(InputEvent::PointerDown {
+                button: Button::Left,
+                point: Point::new(100, 100),
+                time_ms: 100,
+                injected: false,
+                fullscreen_app: false,
+                dpi_scale: 1.0,
+            });
+            engine.on_event(InputEvent::PointerMove {
+                point: Point::new(200, 100),
+                time_ms: 110,
+                injected: false,
+            });
+            let gesture_before_open = engine.state();
+            let opened = mailbox.barrier().unwrap();
+            let OwnerRequest::Barrier(reply) = mailbox.take_all().pop().unwrap() else {
+                panic!("open mutated input")
+            };
+            reply.send(Ok(())).unwrap();
+            wait_barrier_reply(opened).unwrap();
+            assert_eq!(engine.state(), gesture_before_open);
+            assert_eq!(engine.enabled(), enabled);
+            let now = std::time::Instant::now();
+            assert!(lifecycle.opened(generation, now));
+            assert!(lifecycle.bind_session(generation, "session".into(), now));
+            let mut settings = engine.settings().clone();
+            settings.volume = 37;
+            let saved = mailbox.save(settings).unwrap();
+            assert!(lifecycle.claim_close(generation, now, false));
+            lifecycle.finish_close(generation, true, now);
+            let draining = lifecycle.claim_resume().unwrap();
+            let closed = mailbox.barrier().unwrap();
+            assert!(lifecycle.reserve_open().is_none());
+            assert!(closed.try_recv().is_err());
+            for request in mailbox.take_all() {
+                match request {
+                    OwnerRequest::Save(settings, reply) => {
+                        engine.set_settings(*settings).unwrap();
+                        reply
+                            .send(Ok(RuntimeStatus {
+                                enabled: engine.enabled(),
+                                load_warning: None,
+                            }))
+                            .unwrap();
+                    }
+                    OwnerRequest::Barrier(reply) => {
+                        reply.send(Ok(())).unwrap();
+                    }
+                    _ => panic!("unexpected lifecycle request"),
+                }
+            }
+            assert_eq!(wait_save_reply(saved).unwrap().enabled, enabled);
+            wait_barrier_reply(closed).unwrap();
+            lifecycle.finish_resume(draining, true);
+            assert_eq!(engine.enabled(), enabled);
+            assert_eq!(engine.settings().volume, 37);
+            assert!(lifecycle.reserve_open().is_some());
+        }
     }
 
     #[test]

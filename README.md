@@ -57,6 +57,8 @@ Pingloom uses an eight-slice radial selection wheel with a central cancellation 
 
 ## Settings Interface
 
+**Gestures stay active while Settings is open**, unless you manually pause them or a native safety/permission failure pauses input. Try pings/emotes while editing; draft changes apply only after **Save changes**. Saving cancels any gesture in progress safely, then uses the new configuration without changing your manual pause state. Runtime status refreshes every five seconds.
+
 The Settings window provides complete customization across three focused pages:
 
 - **Triggers**: Trigger key selectors (`Alt`, `Ctrl`, `Shift`, `Windows`, `Off`, or custom virtual keys), drag threshold numeric input (2–40 px), enable-gestures-at-launch toggle (`enabled_on_start`; not OS startup registration), pause over fullscreen games, and global toggle hotkey editor.
@@ -69,7 +71,7 @@ The Settings window provides complete customization across three focused pages:
 
 Select a slice on the dark eight-wedge wheel, then choose an image from the visual catalog alongside it. Full dropdown assignments remain under **All 8 assignments**. Display controls sit below the wheel; audio follows the workspace. Checkboxes and sliders share the same rose theme rather than default daisyUI colors.
 
-The current three-platform `v0.1.0` build (`f073e22`) also includes shared native ping motion, baked WebP playback without a duplicate animation envelope, and premultiplied-alpha artwork sampling for cleaner edges. These changes preserve gesture timing and settings compatibility.
+The three-platform `v0.1.0` release also includes shared native ping motion, baked WebP playback without a duplicate animation envelope, and premultiplied-alpha artwork sampling for cleaner edges. These changes preserve gesture timing and settings compatibility.
 
 > **Note on screenshots:** The captures below are rendered UI previews generated against `ui/dist` using the automated headless test harness (`ui/tests/verify-ui.cjs`) with simulated Tauri 2 IPC and native chrome mocks. Captures wait for fonts and finite animations to settle. They are not direct Windows 11 DWM screenshots.
 
@@ -183,7 +185,7 @@ Real Windows 11 visual and runtime smoke testing has **not** been executed on th
 
 Before distributing `pingloom.exe` on Windows 11, verify the following manual test matrix:
 1. **WebView2 Availability**: Launch with Evergreen WebView2 installed (normal boot) and verify error dialog when runtime is removed.
-2. **Tray Lifecycle**: Open Settings from notification tray; verify low-level gestures suspend and active input replays without stuck keys.
+2. **Tray Lifecycle**: Open Settings from notification tray and use ping/emote gestures while it remains open. Verify an existing gesture is not cancelled just by opening/closing Settings; explicit pause stays paused. Save mid-gesture must cancel safely without stuck keys.
 3. **Persistence**: Modify triggers, volume, and slice assignments; click *Save changes*; verify `%APPDATA%\lolPing\settings.json` updates atomically and values persist on restart.
 4. **Window Management**: Test Cancel button, `Esc` shortcut, frameless titlebar drag/maximize, and tray *Quit*. Verify idempotent resume of gestures.
 5. **Watchdog Recovery**: Force-terminate WebView2 process; confirm native watchdog tears down UI safely and resumes hooks without deadlock.

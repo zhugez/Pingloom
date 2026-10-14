@@ -32,7 +32,6 @@ struct QueuedAction {
 }
 struct OwnerState {
     engine: GestureEngine,
-    suspended: bool,
     ready: bool,
     warning: Option<String>,
     origin: Option<Point>,
@@ -50,7 +49,6 @@ impl Shared {
     fn status(state: &OwnerState) -> RuntimeStatus {
         RuntimeStatus {
             enabled: state.ready && state.engine.enabled(),
-            settings_suspended: state.suspended,
             load_warning: state.warning.clone(),
         }
     }
@@ -151,7 +149,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             let (tx, rx) = mpsc::sync_channel(96);
             let mut engine = GestureEngine::new(settings)?;
             engine.set_enabled(false);
-            let shared = Arc::new(Shared { state: Mutex::new(OwnerState { engine, suspended: false, ready: false, warning, origin: None, scale: 1.0 }), actions: tx, running: AtomicBool::new(true), overflow: AtomicBool::new(false), clock: Instant::now(), monitors: app.available_monitors()?.into_iter().map(|m| (m.position().x, m.position().y, m.size().width, m.size().height, m.scale_factor())).collect() });
+            let shared = Arc::new(Shared { state: Mutex::new(OwnerState { engine, ready: false, warning, origin: None, scale: 1.0 }), actions: tx, running: AtomicBool::new(true), overflow: AtomicBool::new(false), clock: Instant::now(), monitors: app.available_monitors()?.into_iter().map(|m| (m.position().x, m.position().y, m.size().width, m.size().height, m.scale_factor())).collect() });
             let painter = paint::Painter::new(app.handle())?;
             let settings_item = MenuItem::with_id(app, "settings", "Settings…", true, None::<&str>)?;
             let toggle = CheckMenuItem::with_id(app, "toggle", "Gestures enabled", true, false, None::<&str>)?;
@@ -192,11 +190,9 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                         let mut state = shared.state.lock().unwrap();
                         match request {
                             OwnerRequest::Query(reply) => { let _ = reply.send(Ok((state.engine.settings().clone(), Shared::status(&state)))); }
-                            OwnerRequest::Suspend(value, reply) => {
-                                let decision = state.engine.set_suspended(value);
-                                shared.decision(&mut state, decision);
-                                state.suspended = value;
-                                let _ = reply.send(Ok(Shared::status(&state)));
+                            OwnerRequest::Barrier(reply) => {
+                                // No input mutation: opening/closing Settings is not a pause.
+                                let _ = reply.send(Ok(()));
                             }
                             OwnerRequest::Save(settings, reply) => {
                                 drop(state);
