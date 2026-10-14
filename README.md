@@ -59,11 +59,15 @@ Pingloom uses an eight-slice radial selection wheel with a central cancellation 
 
 **Gestures stay active while Settings is open**, unless you manually pause them or a native safety/permission failure pauses input. Try pings/emotes while editing; draft changes apply only after **Save changes**. Saving cancels any gesture in progress safely, then uses the new configuration without changing your manual pause state. Runtime status refreshes every five seconds.
 
+Only **one Pingloom runtime per user/settings directory** can run. A held OS file lock rejects a second launch before hooks/tray start, and is released even on process termination. A leftover `.instance.lock` file is harmless; do not delete it while the app is running.
+
+Custom PNGs are stored in `custom-emotes/` next to `settings.json`; back up/copy both when moving settings. Import does not reference your original file. This initial library has no in-app delete/rename/export controls.
+
 The Settings window provides complete customization across three focused pages:
 
 - **Triggers**: Trigger key selectors (`Alt`, `Ctrl`, `Shift`, `Windows`, `Off`, or custom virtual keys), drag threshold numeric input (2–40 px), enable-gestures-at-launch toggle (`enabled_on_start`; not OS startup registration), pause over fullscreen games, and global toggle hotkey editor.
 - **Tactical Pings**: Interactive 8-slice radial preview with real League ping icons, real-time duplicate slot detection, 8-row slot assignment table, ping size scaling (60–220 px), display duration (1.0–8.0 s), effects volume (0–100%), tick sounds, and mute toggle.
-- **Emotes**: Interactive 8-slice emote radial preview, 8-row emote assignment table with static PNG preview thumbnails (native overlay renders animated WebP), emote overlay size input (80–300 px), and bundled emote audio toggle.
+- **Emotes**: Illustrated picker and eight-slice radial preview, native bundled WebP animations, size (80–300 px) and audio controls. **Import custom emote** adds local static PNGs to wheel and trigger-tap choices: up to 8 MiB / 2048×2048 input, normalized to at most 512px, 16 custom images. No custom animation/audio yet. Import stores artwork immediately; assignments apply only on Save.
 
 > **Note on custom titlebar:** Custom HTML window caption buttons inside WebView2 cannot natively trigger the Windows 11 DWM Snap Layout flyout on hover without Win32 `WM_NCHITTEST` non-client message interception on the top-level HWND.
 

@@ -66,7 +66,10 @@ impl Renderer {
         if let Some(image) = self.cache.get(path) {
             return Some(Arc::clone(image));
         }
-        let bytes = ASSETS.get_file(path)?.contents();
+        let custom = crate::custom_emotes::asset(path);
+        let bytes = custom
+            .as_deref()
+            .or_else(|| ASSETS.get_file(path).map(|file| file.contents()))?;
         let image = Arc::new(image::load_from_memory(bytes).ok()?.into_rgba8());
         self.cache.insert(path.into(), Arc::clone(&image));
         Some(image)
@@ -490,6 +493,45 @@ mod tests {
         assert!(renderer
             .frame_at(&settings, start + Duration::from_secs(9))
             .is_none());
+    }
+
+    #[test]
+    fn imported_custom_png_renders_through_the_native_emote_path() {
+        let directory = tempfile::tempdir().unwrap();
+        crate::custom_emotes::initialize(&directory.path().join("settings.json"));
+        let image = RgbaImage::from_pixel(4, 4, Rgba([12, 200, 34, 255]));
+        let mut bytes = std::io::Cursor::new(Vec::new());
+        image.write_to(&mut bytes, image::ImageFormat::Png).unwrap();
+        let id = crate::custom_emotes::import(bytes.get_ref()).unwrap();
+        let mut settings = Settings {
+            click_emote_id: id.clone(),
+            ..Settings::default()
+        };
+        settings.emote_wheel[0] = id.clone();
+        settings.validate().unwrap();
+        settings
+            .save_atomic(directory.path().join("settings.json"))
+            .unwrap();
+        assert_eq!(
+            Settings::load(directory.path().join("settings.json")).unwrap(),
+            settings
+        );
+        let start = Instant::now();
+        let mut renderer = Renderer::new();
+        renderer.emote = Some(Emote {
+            point: Point::new(200, 200),
+            started: start,
+            frames_started: start,
+            slug: id,
+            frames: Vec::new(),
+        });
+        let frame = renderer
+            .frame_at(&settings, start + Duration::from_millis(250))
+            .unwrap();
+        assert!(frame
+            .image
+            .pixels()
+            .any(|p| p[0] == 12 && p[1] == 200 && p[2] == 34 && p[3] > 0));
     }
 
     #[test]

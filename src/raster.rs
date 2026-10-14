@@ -10,6 +10,14 @@ pub(crate) fn resize_art(image: &RgbaImage, width: u32) -> Cow<'_, RgbaImage> {
     let height = ((u64::from(width) * u64::from(image.height()) + u64::from(image.width()) / 2)
         / u64::from(image.width()))
     .max(1) as u32;
+    resize_art_to(image, width, height)
+}
+
+pub(crate) fn resize_art_to(image: &RgbaImage, width: u32, height: u32) -> Cow<'_, RgbaImage> {
+    if image.dimensions() == (width, height) || image.width() == 0 || image.height() == 0 {
+        return Cow::Borrowed(image);
+    }
+    let (width, height) = (width.max(1), height.max(1));
     let premultiplied = Rgba32FImage::from_fn(image.width(), image.height(), |x, y| {
         let pixel = image.get_pixel(x, y);
         let a = f32::from(pixel[3]) / 255.0;

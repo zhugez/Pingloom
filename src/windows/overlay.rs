@@ -395,7 +395,11 @@ impl Overlay {
     }
 
     pub fn spawn_emote(&mut self, slug: &str, point: Point, size: u16) -> Option<String> {
-        let bytes = ASSETS.get_file(format!("emotes/{slug}.png"))?.contents();
+        let path = format!("emotes/{slug}.png");
+        let custom = crate::custom_emotes::asset(&path);
+        let bytes = custom
+            .as_deref()
+            .or_else(|| ASSETS.get_file(&path).map(|file| file.contents()))?;
         let still = image::load_from_memory(bytes).ok()?.into_rgba8();
         self.emote = Some(EmoteFx {
             slug: slug.to_owned(),
@@ -800,11 +804,11 @@ impl Canvas<'_> {
         if let Some(image) = cache.get(path) {
             return Some(Arc::clone(image));
         }
-        let image = Arc::new(
-            image::load_from_memory(ASSETS.get_file(path)?.contents())
-                .ok()?
-                .into_rgba8(),
-        );
+        let custom = crate::custom_emotes::asset(path);
+        let bytes = custom
+            .as_deref()
+            .or_else(|| ASSETS.get_file(path).map(|file| file.contents()))?;
+        let image = Arc::new(image::load_from_memory(bytes).ok()?.into_rgba8());
         cache.insert(path.to_owned(), Arc::clone(&image));
         Some(image)
     }

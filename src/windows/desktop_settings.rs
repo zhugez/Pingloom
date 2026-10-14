@@ -12,6 +12,7 @@ pub(crate) struct DesktopSettingsState {
     pub mailbox: Mutex<Option<Arc<OwnerMailbox>>>,
     lifecycle: Mutex<Lifecycle>,
     pub save_in_flight: Mutex<bool>,
+    import_in_flight: Mutex<bool>,
 }
 
 struct SaveGuard<'a>(&'a Mutex<bool>);
@@ -140,7 +141,7 @@ fn catalog() -> Catalog {
             preview_url: preview_data(&format!("textures/{}.png", p.icon)),
         })
         .collect();
-    let emotes = EMOTE_ASSETS
+    let mut emotes: Vec<Entry> = EMOTE_ASSETS
         .iter()
         .map(|id| Entry {
             id: (*id).into(),
@@ -148,6 +149,18 @@ fn catalog() -> Catalog {
             preview_url: preview_data(&format!("emotes/{id}.png")),
         })
         .collect();
+    emotes.extend(
+        crate::custom_emotes::catalog()
+            .into_iter()
+            .map(|(id, bytes)| Entry {
+                name: format!("Custom {}", &id[id.len() - 6..]),
+                id,
+                preview_url: format!(
+                    "data:image/png;base64,{}",
+                    base64::Engine::encode(&base64::engine::general_purpose::STANDARD, bytes)
+                ),
+            }),
+    );
     Catalog {
         pings,
         emotes,
@@ -226,6 +239,57 @@ pub(crate) async fn get_settings_and_catalog<R: Runtime>(
         platform: std::env::consts::OS,
     })
 }
+#[tauri::command(rename_all = "snake_case")]
+pub(crate) async fn import_emote<R: Runtime>(
+    window: WebviewWindow<R>,
+    state: tauri::State<'_, Arc<DesktopSettingsState>>,
+    session_id: String,
+    data: String,
+) -> Result<Entry, Rejection> {
+    trusted(&window)?;
+    check_session(&state, &session_id)?;
+    let reject = |message: String| Rejection {
+        code: "invalid_payload".into(),
+        message,
+        field: None,
+        request_id: None,
+    };
+    if data.len() > crate::custom_emotes::MAX_INPUT_BYTES.div_ceil(3) * 4 {
+        return Err(reject("Choose a PNG up to 8 MiB".into()));
+    }
+    {
+        let mut pending = state
+            .import_in_flight
+            .lock()
+            .map_err(|_| reject("Import unavailable".into()))?;
+        if *pending {
+            return Err(reject("Another emote import is in progress".into()));
+        }
+        *pending = true;
+    }
+    let _guard = SaveGuard(&state.import_in_flight);
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let bytes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, data)
+            .map_err(|_| "Invalid image encoding".to_string())?;
+        let id = crate::custom_emotes::import(&bytes)?;
+        let bytes = crate::custom_emotes::asset(&format!("emotes/{id}.png"))
+            .ok_or("Imported emote unavailable")?;
+        Ok::<_, String>(Entry {
+            name: format!("Custom {}", &id[id.len() - 6..]),
+            id,
+            preview_url: format!(
+                "data:image/png;base64,{}",
+                base64::Engine::encode(&base64::engine::general_purpose::STANDARD, bytes)
+            ),
+        })
+    })
+    .await
+    .map_err(|e| reject(e.to_string()))?
+    .map_err(reject)?;
+    check_session(&state, &session_id)?;
+    Ok(result)
+}
+
 static SESSION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
 fn check_session(state: &DesktopSettingsState, session: &str) -> Result<(), Rejection> {
@@ -373,6 +437,14 @@ pub(crate) async fn save_settings<R: Runtime>(
         });
     }
     let field = candidate_field(&candidate);
+    if field.is_some() {
+        return Err(Rejection {
+            code: "validation".into(),
+            message: "Unknown or missing asset, or unsupported trigger".into(),
+            field,
+            request_id: Some(request_id),
+        });
+    }
     let settings: Settings = serde_json::from_value(candidate).map_err(|_| Rejection {
         code: "validation".into(),
         message: "Candidate Settings contains an invalid enum, key, or asset".into(),
@@ -536,18 +608,21 @@ fn candidate_field(v: &serde_json::Value) -> Option<String> {
     }
     if v.get("click_emote_id")
         .and_then(serde_json::Value::as_str)
-        .is_some_and(|id| !EMOTE_ASSETS.contains(&id))
+        .is_some_and(|id| !known_emote(id))
     {
         return Some("click_emote_id".into());
     }
     if let Some(a) = v.get("emote_wheel").and_then(serde_json::Value::as_array) {
         for (i, id) in a.iter().enumerate() {
-            if id.as_str().is_none_or(|s| !EMOTE_ASSETS.contains(&s)) {
+            if id.as_str().is_none_or(|s| !known_emote(s)) {
                 return Some(format!("emote_wheel.{i}"));
             }
         }
     }
     None
+}
+fn known_emote(id: &str) -> bool {
+    EMOTE_ASSETS.contains(&id) || crate::custom_emotes::exists(id)
 }
 fn strict_keys(v: &serde_json::Value) -> bool {
     const KEYS: &[&str] = &[
@@ -597,6 +672,7 @@ pub(crate) fn install<R: tauri::Runtime>(
     builder
         .manage(state)
         .invoke_handler(tauri::generate_handler![
+            import_emote,
             get_settings_and_catalog,
             save_settings,
             close_settings,
