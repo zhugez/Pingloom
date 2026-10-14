@@ -1,6 +1,6 @@
 # Pingloom brand concept
 
-Generated with Gemini `gemini-3-pro-image`; not yet applied to application icons or published.
+Concept images generated with Gemini `gemini-3-pro-image`. The reconstructed SVG mark is used for application icons and the Settings header in v0.2.1.
 
 - `pingloom-logo-concept.png`: logo exploration / wordmark direction.
 - `pingloom-brandkit.png`: identity overview and conceptual desktop applications.
@@ -27,5 +27,5 @@ ring is a supporting gesture motif, not a second logo.
 The board contains conceptual mockups, not screenshots or measured color/accessibility
 proof. PNG generation may approximate colors/geometry; SVG values are authoritative for
 the reconstructed mark. Small-size raster exports were generated for inspection, not
-physical tray-icon acceptance. A final outlined wordmark and OS icon packages are not
-included in this design pass.
+physical tray-icon acceptance. A final outlined wordmark is not included. Desktop icon
+packages derived from the colored SVG are checked in under `icons/`.
