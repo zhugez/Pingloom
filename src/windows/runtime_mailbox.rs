@@ -3,9 +3,12 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::time::Duration;
 
 use pingloom_core::settings::Settings;
+#[cfg(windows)]
 use windows_sys::Win32::Foundation::HWND;
+#[cfg(windows)]
 use windows_sys::Win32::UI::WindowsAndMessaging::PostMessageW;
 
+#[cfg(windows)]
 pub(crate) const WM_OWNER_REQUEST: u32 = 0x8000 + 18;
 const CAPACITY: usize = 16;
 
@@ -52,7 +55,7 @@ struct State {
     hwnd: isize,
     closing: bool,
     queue: VecDeque<OwnerRequest>,
-    wake: fn(HWND) -> bool,
+    wake: fn(isize) -> bool,
 }
 
 pub(crate) struct OwnerMailbox {
@@ -61,10 +64,16 @@ pub(crate) struct OwnerMailbox {
 
 impl OwnerMailbox {
     pub(crate) fn new() -> Arc<Self> {
-        Self::with_wake(|hwnd| unsafe { PostMessageW(hwnd, WM_OWNER_REQUEST, 0, 0) != 0 })
+        #[cfg(windows)]
+        let mailbox = Self::with_wake(|hwnd| unsafe {
+            PostMessageW(hwnd as HWND, WM_OWNER_REQUEST, 0, 0) != 0
+        });
+        #[cfg(not(windows))]
+        let mailbox = Self::with_wake(|_| true);
+        mailbox
     }
 
-    fn with_wake(wake: fn(HWND) -> bool) -> Arc<Self> {
+    fn with_wake(wake: fn(isize) -> bool) -> Arc<Self> {
         Arc::new(Self {
             state: Mutex::new(State {
                 hwnd: 0,
@@ -75,8 +84,13 @@ impl OwnerMailbox {
         })
     }
 
+    #[cfg(windows)]
     pub(crate) fn publish_hwnd(&self, hwnd: HWND) {
-        self.state.lock().expect("owner mailbox poisoned").hwnd = hwnd as isize;
+        self.publish_owner(hwnd as isize);
+    }
+
+    pub(crate) fn publish_owner(&self, identity: isize) {
+        self.state.lock().expect("owner mailbox poisoned").hwnd = identity;
     }
 
     pub(crate) fn enqueue(&self, request: OwnerRequest) -> Result<(), OwnerError> {
@@ -99,7 +113,7 @@ impl OwnerMailbox {
         }
         state.queue.push_back(request);
         // Keep the queue lock through wake so a failed PostMessage can safely remove this request.
-        if !(state.wake)(state.hwnd as HWND) {
+        if !(state.wake)(state.hwnd) {
             let request = state.queue.pop_back().expect("just-enqueued owner request");
             reject_request(request, "could not wake native owner");
             return Err(OwnerError::unavailable("could not wake native owner"));
@@ -192,7 +206,7 @@ pub(crate) fn wait_save_reply<T>(
 mod tests {
     use super::*;
 
-    fn fake_wake(_: HWND) -> bool {
+    fn fake_wake(_: isize) -> bool {
         true
     }
 
@@ -216,7 +230,7 @@ mod tests {
     #[test]
     fn shutdown_rejects_each_queued_reply() {
         let mailbox = OwnerMailbox::with_wake(fake_wake);
-        mailbox.publish_hwnd(1 as HWND);
+        mailbox.publish_owner(1);
         let reply = mailbox.query().unwrap();
         mailbox.close_and_reject_pending();
         assert_eq!(reply.recv().unwrap().unwrap_err().code, "unavailable");
@@ -230,7 +244,7 @@ mod tests {
     #[test]
     fn queue_limit_returns_busy_without_losing_queued_work() {
         let mailbox = OwnerMailbox::with_wake(fake_wake);
-        mailbox.publish_hwnd(1 as HWND);
+        mailbox.publish_owner(1);
         let replies: Vec<_> = (0..CAPACITY).map(|_| mailbox.query().unwrap()).collect();
         assert_eq!(mailbox.query().unwrap_err().code, "busy");
         assert_eq!(mailbox.take_all().len(), CAPACITY);

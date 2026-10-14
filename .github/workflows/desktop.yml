@@ -1,0 +1,89 @@
+name: Desktop builds
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            platform: windows
+          - os: ubuntu-24.04
+            platform: linux
+          - os: macos-15
+            platform: macos
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Linux native build dependencies
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf libx11-dev libxtst-dev libevdev-dev libasound2-dev libudev-dev autoconf automake libtool pkg-config
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - name: Build and test bundled Settings (no runtime Node)
+        working-directory: ui
+        run: |
+          npm ci
+          npm run check
+          npm test
+          npm run build
+      - name: Format
+        run: cargo fmt --all -- --check
+      - name: Native-target tests
+        run: cargo test --locked --all-targets
+      - name: Native-target Clippy
+        run: cargo clippy --locked --all-targets -- -D warnings
+      - name: Windows portable executable
+        if: matrix.platform == 'windows'
+        run: cargo build --locked --release --bin pingloom
+      - name: Linux package
+        if: matrix.platform == 'linux'
+        run: ui/node_modules/.bin/tauri build --bundles deb -- --locked
+      - name: macOS application bundle
+        if: matrix.platform == 'macos'
+        run: ui/node_modules/.bin/tauri build --bundles app -- --locked
+      - name: Stage Windows
+        if: matrix.platform == 'windows'
+        shell: bash
+        run: |
+          mkdir release
+          cp target/release/pingloom.exe release/
+      - name: Stage Linux
+        if: matrix.platform == 'linux'
+        run: |
+          mkdir release
+          tar -czf release/pingloom-linux-x64.tar.gz -C target/release pingloom -C "$GITHUB_WORKSPACE" LICENSE THIRD_PARTY_NOTICES.txt docs/PLATFORMS.md
+          cp target/release/bundle/deb/*.deb release/
+      - name: Stage macOS (ad-hoc signed, not notarized)
+        if: matrix.platform == 'macos'
+        run: |
+          mkdir release
+          codesign --force --deep --sign - target/release/bundle/macos/Pingloom.app
+          ditto -c -k --sequesterRsrc --keepParent target/release/bundle/macos/Pingloom.app "release/pingloom-macos-$(uname -m).zip"
+      - name: Record build provenance
+        shell: bash
+        run: |
+          { echo "Commit: $GITHUB_SHA"; rustc -vV; } > "release/BUILD_INFO-${{ matrix.platform }}.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pingloom-${{ matrix.platform }}
+          path: release/
+          if-no-files-found: error
+          retention-days: 14

@@ -936,6 +936,14 @@ input[type="number"] {
   z-index: 5;
 }
 
+.wheel-node.focused:hover {
+  transform: translate(-50%, -50%) scale(1.08);
+}
+
+.wheel-node.focused:active {
+  transform: translate(-50%, -50%) scale(0.96);
+}
+
 .wheel-node:focus-visible {
   outline: 2px solid var(--btn-dark-text);
   outline-offset: 1px;
@@ -1371,6 +1379,18 @@ input[type="range"] {
   outline-offset: 1px;
 }
 
+/* Bound control feedback to visual properties; never interpolate layout or typography. */
+.tab-btn,
+.slot-row,
+.btn-footer-ghost,
+.btn-footer-primary,
+.btn-primary,
+.bridge-state .btn-primary {
+  transition-property: background-color, border-color, color, box-shadow, opacity, transform;
+  transition-duration: 120ms;
+  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
 /* Boot & Bridge Fallback States */
 .boot-state, .bridge-state {
   width: 100vw;
@@ -1424,6 +1444,10 @@ input[type="range"] {
 
 .spin {
   animation: spin 1s linear infinite;
+}
+
+.window-hidden .spin {
+  animation-play-state: paused;
 }
 
 @keyframes spin {
@@ -1975,14 +1999,23 @@ code,
     animation: none !important;
   }
 
-  .tab-pane,
-  .wheel-node,
-  .btn-command,
+  .page-panel,
   .tab-btn,
-  .window-control-btn {
+  .window-control-btn,
+  .slot-row,
+  .btn-footer-ghost,
+  .btn-footer-primary,
+  .btn-primary {
     animation: none !important;
     transition: none !important;
     transform: none !important;
+  }
+
+  /* Translation positions each node; only the decorative scale must stop. */
+  .wheel-node {
+    animation: none !important;
+    transition: none !important;
+    transform: translate(-50%, -50%) !important;
   }
 
   * {

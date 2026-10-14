@@ -205,6 +205,10 @@ function findChrome() {
             return null;
           }
           if (cmd === 'save_settings') {
+            if (window.__deferSave) {
+              window.__deferSave = false;
+              await new Promise(resolve => { window.__resumeSave = resolve; });
+            }
             if (window.__simulateRejection) {
               const err = window.__simulateRejection;
               window.__simulateRejection = null;
@@ -480,6 +484,75 @@ function findChrome() {
     // Reset viewport and theme
     await page.setViewport({ width: 960, height: 720 });
     await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'light' }]);
+
+    // Motion regressions: exercise rendered geometry and actual scroll calls, not CSS source.
+    console.log('Testing reduced-motion wheel geometry and field reveal...');
+    await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }]);
+    await page.click('#tab-emotes');
+    await page.click('#tab-pings');
+    await page.waitForSelector('#panel-pings');
+    const motion = await page.evaluate(() => {
+      const wheel = document.querySelector('.radial-wheel');
+      const bounds = wheel.getBoundingClientRect();
+      const misplaced = [...wheel.querySelectorAll('.wheel-node')].filter(node => {
+        const rect = node.getBoundingClientRect();
+        return Math.abs(rect.x + rect.width / 2 - bounds.x - parseFloat(node.style.left) * bounds.width / 100) > 1
+          || Math.abs(rect.y + rect.height / 2 - bounds.y - parseFloat(node.style.top) * bounds.height / 100) > 1;
+      }).length;
+      return { misplaced, panelAnimations: document.querySelector('.page-panel').getAnimations().length };
+    });
+    if (motion.misplaced || motion.panelAnimations) {
+      throw new Error(`Reduced-motion layout/animation regression: ${JSON.stringify(motion)}`);
+    }
+    await page.evaluate(() => {
+      window.__scrollCalls = [];
+      const scroll = Element.prototype.scrollIntoView;
+      Element.prototype.scrollIntoView = function(options) {
+        window.__scrollCalls.push(options);
+        return scroll.call(this, options);
+      };
+    });
+    await page.click('.wheel-node');
+    const reveals = await page.evaluate(() => window.__scrollCalls);
+    if (!reveals.length || reveals.some(call => call.behavior !== 'auto')) {
+      throw new Error(`Reduced motion must reveal fields without smooth scrolling: ${JSON.stringify(reveals)}`);
+    }
+    await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'no-preference' }]);
+    console.log('Testing interruption, focused-node press and hidden-window spinner...');
+    for (let i = 0; i < 6; i++) {
+      await page.click(i % 2 ? '#tab-pings' : '#tab-emotes');
+    }
+    if (await page.$$eval('[role="tabpanel"]', panels => panels.length) !== 1) {
+      throw new Error('Interrupted tab navigation left overlapping panels');
+    }
+    await page.click('.wheel-node');
+    await page.hover('.wheel-node');
+    await page.mouse.down();
+    try {
+      await page.waitForFunction(() => {
+        const node = document.querySelector('.wheel-node:active');
+        return node && new DOMMatrix(getComputedStyle(node).transform).a < 0.999;
+      }, { timeout: 2000 });
+    } finally {
+      await page.mouse.up();
+    }
+    await page.evaluate(() => {
+      window.__deferSave = true;
+    });
+    await page.click('.btn-footer-primary');
+    await page.waitForSelector('.status-msg.saving .spin');
+    await page.evaluate(() => {
+      Object.defineProperty(document, 'hidden', { configurable: true, value: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('.status-msg.saving .spin')).animationPlayState === 'paused');
+    await page.evaluate(() => {
+      Object.defineProperty(document, 'hidden', { configurable: true, value: false });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('.status-msg.saving .spin')).animationPlayState === 'running');
+    await page.evaluate(() => window.__resumeSave());
+    await page.waitForSelector('.status-msg.success');
 
     // 9. Test Window Chrome Close Button (calls close_settings, NOT destroy)
     console.log('Testing Window Chrome Close button (generation-aware close_settings)...');

@@ -24,6 +24,7 @@ export interface Settings {
 export interface CatalogEntry { id: string; name: string; preview_url: string }
 export interface BootData {
   session_id: string;
+  platform?: 'windows' | 'linux' | 'macos';
   settings: Settings;
   status: 'active' | 'paused' | 'settings_suspended';
   catalog: { pings: CatalogEntry[]; emotes: CatalogEntry[]; trigger_keys?: number[] };
@@ -47,6 +48,12 @@ export const TRIGGERS: { value: Exclude<Trigger, object>; label: string }[] = [
   { value: 'win', label: 'Windows' }, { value: 'caps_lock', label: 'Caps Lock' },
   { value: 'mouse4', label: 'Mouse 4' }, { value: 'mouse5', label: 'Mouse 5' },
 ];
+export function platformTriggers(platform?: BootData['platform']) {
+  return TRIGGERS.filter(({ value }) =>
+    !(platform === 'linux' && (value === 'mouse4' || value === 'mouse5'))
+    && !(platform === 'macos' && value === 'caps_lock')
+  ).map(option => ({ ...option, label: platform === 'macos' && option.value === 'win' ? 'Command' : platform === 'linux' && option.value === 'win' ? 'Super' : option.label }));
+}
 export const DEFAULT_PING_WHEEL = ['danger', 'push', 'omw', 'allin', 'assist', 'needvision', 'missing', 'enemyvision'];
 export const DEFAULT_EMOTE_WHEEL = ['unworthy_cn', 'poro_snax', 'sad_kitten', 'cheeky_poro', 'angry_kitty', 'gg_heart', 'bee_happy', 'bee_mad'];
 export function cloneSettings(value: Settings): Settings { return JSON.parse(JSON.stringify(value)) as Settings; }

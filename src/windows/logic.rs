@@ -1,12 +1,12 @@
 #[cfg(any(windows, test))]
 use std::sync::atomic::{AtomicBool, Ordering};
 
-#[cfg(any(windows, test))]
+#[cfg(any(feature = "desktop", test))]
 use pingloom_core::gesture::ReplayInput;
 use pingloom_core::model::{Button, Trigger};
 use pingloom_core::settings::{Settings, ToggleMods};
 
-#[cfg(any(windows, test))]
+#[cfg(any(feature = "desktop", test))]
 const MAX_REPLAY_INSERT_ATTEMPTS: usize = 3;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -106,6 +106,21 @@ pub fn reveal_scroll_delta(top: i32, bottom: i32, viewport_height: i32) -> i32 {
     } else {
         0
     }
+}
+
+/// A small, continuous overshoot that settles at exactly the configured size.
+pub fn effect_pop(age: f64, enter_seconds: f64) -> f64 {
+    let t = (age / enter_seconds).clamp(0.0, 1.0) - 1.0;
+    1.0 + 0.6 * (2.0 * t.powi(3) + t.powi(2))
+}
+
+pub fn effect_fade(age: f64, lifetime: f64) -> f64 {
+    ((lifetime - age) / (lifetime * 0.13).min(0.35)).clamp(0.0, 1.0)
+}
+
+pub fn selection_blend(current: f64, selected: bool, elapsed: f64) -> f64 {
+    let target = if selected { 1.0 } else { 0.0 };
+    target + (current - target) * (-elapsed.max(0.0) / 0.035).exp()
 }
 
 pub fn caption_mask_usable_after_flush(usable: bool, flushed: bool) -> bool {
@@ -229,7 +244,7 @@ impl Drop for CallbackPermit<'_> {
     }
 }
 
-#[cfg(any(windows, test))]
+#[cfg(any(feature = "desktop", test))]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ReplayInsertReport {
     pub(crate) inserted: usize,
@@ -246,7 +261,7 @@ pub(crate) fn take_deferred<T>(pending: &mut Vec<T>) -> Vec<T> {
     std::mem::take(pending)
 }
 
-#[cfg(any(windows, test))]
+#[cfg(any(feature = "desktop", test))]
 pub(crate) fn insert_replay_batch(
     replay: &[ReplayInput],
     mut insert: impl FnMut(&[ReplayInput]) -> usize,
@@ -270,7 +285,7 @@ pub(crate) fn insert_replay_batch(
     }
 }
 
-#[cfg(any(windows, test))]
+#[cfg(any(feature = "desktop", test))]
 fn insert_prefix(
     inputs: &[ReplayInput],
     insert: &mut impl FnMut(&[ReplayInput]) -> usize,
@@ -286,14 +301,14 @@ fn insert_prefix(
     (inserted, attempts)
 }
 
-#[cfg(any(windows, test))]
+#[cfg(any(feature = "desktop", test))]
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum PressedControl {
     Button(Button),
     Key(u8),
 }
 
-#[cfg(any(windows, test))]
+#[cfg(any(feature = "desktop", test))]
 fn unbalanced_releases(accepted: &[ReplayInput]) -> Vec<ReplayInput> {
     let mut pressed = Vec::new();
     for event in accepted {
@@ -524,6 +539,30 @@ mod tests {
             composite_rgba_over_rgb([200, 100, 50, 255], [10, 20, 30]),
             [200, 100, 50]
         );
+    }
+
+    #[test]
+    fn motion_is_continuous_time_based_and_fades_all_the_way_out() {
+        for duration in [0.25, 0.28] {
+            assert!((effect_pop(0.0, duration) - 0.4).abs() < 1e-9);
+            assert!((effect_pop(duration - 1e-6, duration) - 1.0).abs() < 1e-5);
+            assert_eq!(effect_pop(duration, duration), 1.0);
+            assert_eq!(effect_pop(duration + 1e-6, duration), 1.0);
+            for step in 0..=100 {
+                assert!((0.4 - 1e-9..=1.03)
+                    .contains(&effect_pop(duration * step as f64 / 100.0, duration)));
+            }
+        }
+        for duration in [1.0, 3.0, 8.0] {
+            assert_eq!(effect_fade(0.0, duration), 1.0);
+            assert_eq!(effect_fade(duration, duration), 0.0);
+            assert_eq!(effect_fade(duration + 1.0, duration), 0.0);
+        }
+        let single_frame = selection_blend(0.0, true, 0.10);
+        let split_frames = selection_blend(selection_blend(0.0, true, 0.04), true, 0.06);
+        assert!((single_frame - split_frames).abs() < 1e-9);
+        assert!(selection_blend(single_frame, false, 0.05) < single_frame);
+        assert_eq!(selection_blend(0.5, true, 0.0), 0.5);
     }
 
     #[test]

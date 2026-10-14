@@ -59,12 +59,22 @@ pub(crate) struct Boot {
     status: String,
     catalog: Catalog,
     load_warning: Option<String>,
+    platform: &'static str,
 }
 #[derive(serde::Serialize)]
 pub(crate) struct Saved {
     request_id: String,
     settings: Settings,
     status: String,
+}
+
+fn local_origin(url: &tauri::Url) -> bool {
+    let (scheme, host) = if cfg!(windows) {
+        ("http", "tauri.localhost")
+    } else {
+        ("tauri", "localhost")
+    };
+    url.scheme() == scheme && url.host_str() == Some(host) && url.port().is_none()
 }
 
 fn trusted<R: Runtime>(window: &WebviewWindow<R>) -> Result<(), Rejection> {
@@ -75,9 +85,7 @@ fn trusted<R: Runtime>(window: &WebviewWindow<R>) -> Result<(), Rejection> {
         request_id: None,
     })?;
     if window.label() != "settings"
-        || url.scheme() != "http"
-        || url.host_str() != Some("tauri.localhost")
-        || url.port().is_some()
+        || !local_origin(&url)
         || !matches!(url.path(), "/" | "/index.html")
     {
         return Err(Rejection {
@@ -148,7 +156,13 @@ fn catalog() -> Catalog {
     Catalog {
         pings,
         emotes,
-        trigger_keys: (1u8..=254).filter(|vk| !matches!(*vk, 0x08 | 0x09 | 0x0d | 0x10..=0x12 | 0x1b | 0x20 | 0x25..=0x28 | 0x5b | 0x5c | 0xa0..=0xa5)).collect(),
+        trigger_keys: (1u8..=254).filter(|vk| {
+            let safe = !matches!(*vk, 0x08 | 0x09 | 0x0d | 0x10..=0x12 | 0x1b | 0x20 | 0x25..=0x28 | 0x5b | 0x5c | 0xa0..=0xa5);
+            #[cfg(windows)]
+            { safe }
+            #[cfg(not(windows))]
+            { safe && crate::desktop::input::supported_vk(*vk) }
+        }).collect(),
     }
 }
 
@@ -214,6 +228,7 @@ pub(crate) async fn get_settings_and_catalog<R: Runtime>(
         status: status(run_status.clone()),
         catalog: catalog(),
         load_warning: run_status.load_warning,
+        platform: std::env::consts::OS,
     })
 }
 static SESSION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
@@ -735,10 +750,11 @@ pub(crate) fn schedule_open(app: AppHandle, state: Arc<DesktopSettingsState>) {
                 if !still_opening {
                     return;
                 }
+                #[cfg(windows)]
                 let effects = tauri::window::EffectsBuilder::new()
                     .effect(tauri::window::Effect::Mica)
                     .build();
-                let built = tauri::WebviewWindowBuilder::new(
+                let builder = tauri::WebviewWindowBuilder::new(
                     &app_main,
                     "settings",
                     tauri::WebviewUrl::App("index.html".into()),
@@ -749,13 +765,10 @@ pub(crate) fn schedule_open(app: AppHandle, state: Arc<DesktopSettingsState>) {
                 .resizable(true)
                 .decorations(false)
                 .transparent(true)
-                .effects(effects)
-                .on_navigation(|url| {
-                    url.scheme() == "http"
-                        && url.host_str() == Some("tauri.localhost")
-                        && url.port().is_none()
-                })
-                .build();
+                .on_navigation(local_origin);
+                #[cfg(windows)]
+                let builder = builder.effects(effects);
+                let built = builder.build();
                 if let Ok(built_window) = built {
                     let callback_state = Arc::clone(&state_main);
                     let callback_app = app_main.clone();

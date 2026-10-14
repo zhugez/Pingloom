@@ -3,14 +3,23 @@
 #[path = "windows/logic.rs"]
 pub mod logic;
 
-#[cfg(any(windows, test))]
+#[cfg(feature = "desktop")]
+mod animation;
+#[cfg(feature = "desktop")]
+#[path = "windows/assets.rs"]
+mod assets;
+
+#[cfg(any(feature = "desktop", test))]
 #[path = "windows/settings_lifecycle.rs"]
 mod settings_lifecycle;
 
-#[cfg(windows)]
+#[cfg(all(windows, feature = "desktop"))]
 mod windows;
 
-#[cfg(windows)]
+#[cfg(all(not(windows), feature = "desktop"))]
+mod desktop;
+
+#[cfg(all(windows, feature = "desktop"))]
 fn main() {
     use std::sync::{
         atomic::{AtomicBool, Ordering},
@@ -89,7 +98,16 @@ fn main() {
     }
 }
 
-#[cfg(not(windows))]
+#[cfg(all(not(windows), feature = "desktop"))]
 fn main() {
-    eprintln!("Pingloom desktop runtime is supported on Windows 11 x64 only.");
+    if let Err(error) = desktop::run() {
+        eprintln!("Pingloom could not start: {error}");
+        std::process::exit(1);
+    }
+}
+
+#[cfg(not(feature = "desktop"))]
+fn main() {
+    eprintln!("Build Pingloom with its default desktop feature to run the application.");
+    std::process::exit(1);
 }
