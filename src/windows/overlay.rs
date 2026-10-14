@@ -6,8 +6,9 @@ use std::time::{Duration, Instant};
 
 pub(crate) use crate::animation::{decode_emote, AnimatedFrame};
 use crate::logic::{
-    caption_mask_usable_after_flush, composite_premultiplied_bgra, effect_fade, effect_pop,
-    selection_blend, wheel_boundary_angle_degrees, wheel_wedge_outline,
+    caption_mask_usable_after_flush, composite_premultiplied_bgra, effect_fade, emote_envelope,
+    ping_art_motion, ring_coverage, selection_blend, wheel_boundary_angle_degrees, wheel_surface,
+    wheel_wedge_outline,
 };
 use image::RgbaImage;
 use pingloom_core::model::{PingId, WheelKind};
@@ -684,13 +685,16 @@ impl Canvas<'_> {
     }
 
     fn circle(&mut self, center: Point, radius: f64, thickness: f64, color: [u8; 4]) {
-        let outer = radius + thickness / 2.0;
-        let inner = (radius - thickness / 2.0).max(0.0);
+        let outer = radius + thickness / 2.0 + 0.5;
+        let inner = (radius - thickness / 2.0 - 0.5).max(0.0);
         for dy in -(outer.ceil() as i32)..=outer.ceil() as i32 {
             for dx in -(outer.ceil() as i32)..=outer.ceil() as i32 {
                 let distance = f64::from(dx).hypot(f64::from(dy));
                 if distance >= inner && distance <= outer {
-                    self.point(center.x + dx, center.y + dy, color);
+                    let mut rgba = color;
+                    rgba[3] =
+                        (f64::from(color[3]) * ring_coverage(distance, radius, thickness)) as u8;
+                    self.point(center.x + dx, center.y + dy, rgba);
                 }
             }
         }
@@ -768,15 +772,12 @@ impl Canvas<'_> {
         if size == 0 || image.width() == 0 || image.height() == 0 {
             return;
         }
-        let height =
-            (u64::from(size) * u64::from(image.height()) / u64::from(image.width())) as u32;
-        let size = size as usize;
-        let height = height.max(1) as usize;
+        let image = crate::raster::resize_art(image, size);
+        let size = image.width() as usize;
+        let height = image.height() as usize;
         for dy in 0..height {
             for dx in 0..size {
-                let sx = dx * image.width() as usize / size;
-                let sy = dy * image.height() as usize / height;
-                let pixel = image.get_pixel(sx as u32, sy as u32).0;
+                let pixel = image.get_pixel(dx as u32, dy as u32).0;
                 self.point(
                     x + dx as i32,
                     y + dy as i32,
@@ -818,19 +819,16 @@ impl Canvas<'_> {
         let outer = WHEEL_OUTER * scale;
         let inner = WHEEL_INNER * scale;
         let extent = outer.ceil() as i32;
-        let colors: [[u8; 4]; 8] = std::array::from_fn(|slot| {
-            let base = [35.0, 42.0, 50.0, 218.0];
-            let selected = [221.0, 206.0, 154.0, 238.0];
-            std::array::from_fn(|channel| {
-                (base[channel] + (selected[channel] - base[channel]) * wheel.selection[slot]) as u8
-            })
-        });
+
         for dy in -extent..=extent {
             for dx in -extent..=extent {
                 let distance = f64::from(dx).hypot(f64::from(dy));
                 if distance >= inner && distance <= outer {
                     let slice = pick_slice(f64::from(dx), f64::from(dy), 0.0);
-                    let color = slice.map_or([35, 42, 50, 218], |slot| colors[slot]);
+                    let color = wheel_surface(
+                        (distance - inner) / (outer - inner),
+                        slice.map_or(0.0, |slot| wheel.selection[slot]),
+                    );
                     self.point(wheel.origin.x + dx, wheel.origin.y + dy, color);
                 }
             }
@@ -940,45 +938,29 @@ impl Canvas<'_> {
                 );
             }
         }
-        let pop = if reduced_motion {
-            1.0
-        } else {
-            effect_pop(age, 0.28)
-        };
         for (index, art) in asset.art.iter().enumerate() {
             let Some(image) = self.asset(cache, &format!("textures/{art}.png")) else {
                 continue;
             };
-            let art_size = (size * pop) as u32;
-            let art_y = ping.point.y - (f64::from(art_size) * 0.73) as i32;
-            let offset = if !reduced_motion && asset.art.len() == 2 && age < 0.22 {
-                let slide = (1.0 - age / 0.22).max(0.0) * size * 0.64;
-                if index == 0 {
-                    slide
-                } else {
-                    -slide
-                }
-            } else {
-                0.0
-            } as i32;
+            let (x, y, scale, alpha) = ping_art_motion(age, index, asset.art.len(), reduced_motion);
+            let art_size = (size * scale) as u32;
             self.image(
                 &image,
-                ping.point.x - art_size as i32 / 2 + offset,
-                art_y,
+                ping.point.x - art_size as i32 / 2 + (size * x) as i32,
+                ping.point.y - art_size as i32 / 2 - (size * 0.23) as i32 + (size * y) as i32,
                 art_size,
-                fade,
+                fade * alpha,
             );
         }
     }
 
     fn draw_emote(&mut self, emote: &EmoteFx, image: &RgbaImage, age: f64, reduced_motion: bool) {
         let size = f64::from(emote.size);
-        let pop = if reduced_motion {
-            1.0
-        } else {
-            effect_pop(age, 0.25)
-        };
-        let fade = effect_fade(age, EMOTE_LIFETIME.as_secs_f64());
+        let baked = emote
+            .frames
+            .as_ref()
+            .is_some_and(|frames| !frames.is_empty());
+        let (pop, fade) = emote_envelope(age, baked, reduced_motion);
         let draw_size = (size * 1.25 * pop) as u32;
         self.image(
             image,

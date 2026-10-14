@@ -21,6 +21,27 @@ if (!fs.existsSync(SCREENSHOT_DIR)) {
   fs.mkdirSync(SCREENSHOT_DIR, { recursive: true });
 }
 
+// Capture only settled UI: an in-flight parent transform blurs every child,
+// and GIF export quantizes the palette. Keep review captures as lossless PNG.
+async function capture(page, filename) {
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+    await Promise.all([...document.images].filter(img => img.complete).map(img => img.decode().catch(() => {})));
+    await Promise.all(document.getAnimations()
+      .filter(animation => Number.isFinite(animation.effect?.getComputedTiming().endTime))
+      .map(animation => animation.finished.catch(() => {})));
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const panel = document.querySelector('.page-panel');
+    if (panel) {
+      const style = getComputedStyle(panel);
+      if (style.opacity !== '1' || style.transform !== 'none') {
+        throw new Error(`Unsettled preview: opacity=${style.opacity}, transform=${style.transform}`);
+      }
+    }
+  });
+  await page.screenshot({ path: path.join(SCREENSHOT_DIR, filename) });
+}
+
 function base64Png(relPath) {
   const full = path.join(ASSETS_DIR, relPath);
   if (fs.existsSync(full)) {
@@ -317,7 +338,7 @@ function findChrome() {
     }
 
     // Capture Triggers screenshot (960x720)
-    await page.screenshot({ path: path.join(SCREENSHOT_DIR, '01-triggers-960x720.png') });
+    await capture(page, '01-triggers-960x720.png');
     console.log('Saved 01-triggers-960x720.png');
 
     // 2. Click Pings tab - verifies tab clickable
@@ -346,12 +367,32 @@ function findChrome() {
     }
 
     // Capture Pings screenshot (960x720)
-    await page.screenshot({ path: path.join(SCREENSHOT_DIR, '02-pings-960x720.png') });
+    await capture(page, '02-pings-960x720.png');
     console.log('Saved 02-pings-960x720.png');
+    // HiDPI capture uses physical backing pixels, not a resized 1x screenshot.
+    await page.setViewport({ width: 960, height: 720, deviceScaleFactor: 2 });
+    await capture(page, '02-pings-960x720-2x.png');
+    const settledScale = await page.$eval('.wheel-node.focused .node-img', img => {
+      const style = getComputedStyle(img);
+      return { width: img.getBoundingClientRect().width, scale: style.scale };
+    });
+    if (settledScale.width !== 44 || !['none', '1'].includes(settledScale.scale)) {
+      throw new Error(`Selected art retains a fractional scale: ${JSON.stringify(settledScale)}`);
+    }
+    await page.setViewport({ width: 960, height: 720, deviceScaleFactor: 1 });
 
     // 3. Test changing a slot assignment and check draft feedback
     console.log('Updating East slice assignment to "danger" (creating duplicate)...');
-    await page.select('#wheel-2', 'danger');
+    await page.click('.wheel-node.pos-e');
+    await page.click('.asset-tile[aria-label="Assign Danger to East"]');
+    const galleryAssignment = await page.$eval('#wheel-2', el => el.value);
+    if (galleryAssignment !== 'danger') throw new Error('Gallery did not assign the selected wheel slice');
+    await page.focus('.asset-tile[aria-label="Assign Push to East"]');
+    await page.keyboard.press('Enter');
+    if (await page.$eval('#wheel-2', el => el.value) !== 'push') {
+      throw new Error('Keyboard gallery assignment failed');
+    }
+    await page.click('.asset-tile[aria-label="Assign Danger to East"]');
 
     // Verify duplicate badge appears
     await page.waitForSelector('.wheel-node.duplicate', { timeout: 2000 });
@@ -373,18 +414,18 @@ function findChrome() {
     }
 
     // Capture Emotes screenshot (960x720)
-    await page.screenshot({ path: path.join(SCREENSHOT_DIR, '03-emotes-960x720.png') });
+    await capture(page, '03-emotes-960x720.png');
     console.log('Saved 03-emotes-960x720.png');
 
     // 5. Test Small Viewport (720x600 reflow)
     console.log('Resizing to small viewport (720x600)...');
     await page.setViewport({ width: 720, height: 600 });
-    await page.screenshot({ path: path.join(SCREENSHOT_DIR, '04-small-720x600-emotes.png') });
+    await capture(page, '04-small-720x600-emotes.png');
     console.log('Saved 04-small-720x600-emotes.png');
 
     await page.click('#tab-pings');
     await page.waitForSelector('#panel-pings', { timeout: 2000 });
-    await page.screenshot({ path: path.join(SCREENSHOT_DIR, '05-small-720x600-pings.png') });
+    await capture(page, '05-small-720x600-pings.png');
     console.log('Saved 05-small-720x600-pings.png');
 
     // 6. Test Save Payload (current draft, clean object without Proxy)
@@ -486,15 +527,15 @@ function findChrome() {
     console.log('Testing Dark Mode and Zoom 200% captures...');
     await page.setViewport({ width: 960, height: 720 });
     await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'dark' }]);
-    await page.screenshot({ path: path.join(SCREENSHOT_DIR, '06-dark-960x720.png') });
+    await capture(page, '06-dark-960x720.png');
     console.log('Saved 06-dark-960x720.png');
 
     await page.setViewport({ width: 720, height: 600 });
-    await page.screenshot({ path: path.join(SCREENSHOT_DIR, '08-dark-720x600.png') });
+    await capture(page, '08-dark-720x600.png');
     console.log('Saved 08-dark-720x600.png');
 
     await page.setViewport({ width: 480, height: 360 });
-    await page.screenshot({ path: path.join(SCREENSHOT_DIR, '07-zoom200-480x360.png') });
+    await capture(page, '07-zoom200-480x360.png');
     console.log('Saved 07-zoom200-480x360.png');
 
     // Reset viewport and theme

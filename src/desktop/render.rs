@@ -2,7 +2,10 @@ use super::{audio::Audio, QueuedAction};
 use crate::{
     animation::{decode_emote, AnimatedFrame},
     assets::ASSETS,
-    logic::{effect_fade, effect_pop, selection_blend},
+    logic::{
+        effect_fade, emote_envelope, ping_art_motion, ring_coverage, selection_blend,
+        wheel_boundary_angle_degrees, wheel_surface,
+    },
 };
 use image::{imageops, Pixel, Rgba, RgbaImage};
 use pingloom_core::{geometry::pick_slice, Action, Point, Settings, WheelKind};
@@ -145,7 +148,9 @@ impl Renderer {
         }
     }
     pub fn frame(&mut self, settings: &Settings) -> Option<Frame> {
-        let now = Instant::now();
+        self.frame_at(settings, Instant::now())
+    }
+    fn frame_at(&mut self, settings: &Settings, now: Instant) -> Option<Frame> {
         self.pings.retain(|p| {
             now.duration_since(p.started).as_secs_f64() < settings.ping_duration_s as f64
         });
@@ -202,12 +207,10 @@ impl Renderer {
                     } else if distance <= 220.0 * wheel.scale {
                         let slot = pick_slice(dx as f64, dy as f64, 0.0).unwrap();
                         let blend = wheel.blend[slot];
-                        Some([
-                            (35.0 + 186.0 * blend) as u8,
-                            (42.0 + 164.0 * blend) as u8,
-                            (50.0 + 104.0 * blend) as u8,
-                            235,
-                        ])
+                        Some(wheel_surface(
+                            (distance / wheel.scale - 84.0) / 136.0,
+                            blend,
+                        ))
                     } else {
                         None
                     };
@@ -221,12 +224,23 @@ impl Renderer {
                     }
                 }
             }
+            for boundary in 0..8 {
+                let angle = wheel_boundary_angle_degrees(boundary).to_radians();
+                for radius in (84.0 * wheel.scale) as i32..=(220.0 * wheel.scale) as i32 {
+                    point(
+                        &mut image,
+                        wheel.origin.x - left + (angle.cos() * radius as f64) as i32,
+                        wheel.origin.y - top + (angle.sin() * radius as f64) as i32,
+                        [184, 154, 159, 180],
+                    );
+                }
+            }
             ring(
                 &mut image,
                 wheel.origin.x - left,
                 wheel.origin.y - top,
                 86.0 * wheel.scale,
-                [255, 170, 170, 255],
+                [226, 180, 189, 255],
             );
             ring(
                 &mut image,
@@ -240,13 +254,13 @@ impl Renderer {
                     &mut image,
                     wheel.origin.x - left + i,
                     wheel.origin.y - top + i,
-                    [255, 137, 137, 255],
+                    [226, 180, 189, 255],
                 );
                 point(
                     &mut image,
                     wheel.origin.x - left - i,
                     wheel.origin.y - top + i,
-                    [255, 137, 137, 255],
+                    [226, 180, 189, 255],
                 );
             }
         }
@@ -320,21 +334,18 @@ impl Renderer {
                     );
                 }
             }
-            let art_size = (size
-                * if self.reduced {
-                    1.0
-                } else {
-                    effect_pop(age, 0.28)
-                }) as u32;
-            for art in id.asset().art {
+            for (index, art) in id.asset().art.iter().enumerate() {
+                let (x, y, scale, alpha) =
+                    ping_art_motion(age, index, id.asset().art.len(), self.reduced);
+                let art_size = (size * scale) as u32;
                 if let Some(art) = self.asset(&format!("textures/{art}.png")) {
                     blit(
                         &mut image,
                         &art,
-                        at.x - left,
-                        at.y - top - (art_size as f64 * 0.23) as i32,
+                        at.x - left + (size * x) as i32,
+                        at.y - top - (size * 0.23) as i32 + (size * y) as i32,
                         art_size,
-                        fade,
+                        fade * alpha,
                     );
                 }
             }
@@ -348,6 +359,7 @@ impl Renderer {
                 .rev()
                 .find(|f| !self.reduced && f.at_ms <= elapsed)
                 .map(|f| Arc::new(f.image.clone()));
+            let (scale, opacity) = emote_envelope(age, !emote.frames.is_empty(), self.reduced);
             let point = emote.point;
             let slug = emote.slug.clone();
             let art = art.or_else(|| self.asset(&format!("emotes/{slug}.png")));
@@ -357,14 +369,8 @@ impl Renderer {
                     &art,
                     point.x - left,
                     point.y - top,
-                    (settings.emote_size_px as f64
-                        * 1.25
-                        * if self.reduced {
-                            1.0
-                        } else {
-                            effect_pop(age, 0.25)
-                        }) as u32,
-                    effect_fade(age, 3.0),
+                    (settings.emote_size_px as f64 * 1.25 * scale) as u32,
+                    opacity,
                 );
             }
         }
@@ -381,22 +387,26 @@ fn point(image: &mut RgbaImage, x: i32, y: i32, color: [u8; 4]) {
     }
 }
 fn ring(image: &mut RgbaImage, x: i32, y: i32, radius: f64, color: [u8; 4]) {
-    let steps = (radius * std::f64::consts::TAU).ceil().max(1.0) as usize;
-    for i in 0..steps {
-        let angle = i as f64 * std::f64::consts::TAU / steps as f64;
-        for thickness in [-1.0, 0.0, 1.0] {
-            point(
-                image,
-                x + (angle.cos() * (radius + thickness)) as i32,
-                y + (angle.sin() * (radius + thickness)) as i32,
-                color,
-            );
+    let outer = radius + 2.0;
+    let inner = (radius - 2.0).max(0.0);
+    for dy in -(outer.ceil() as i32)..=outer.ceil() as i32 {
+        let y2 = f64::from(dy).powi(2);
+        let end = (outer * outer - y2).max(0.0).sqrt().floor() as i32;
+        let start = (inner * inner - y2).max(0.0).sqrt().floor() as i32;
+        for dx in start..=end {
+            let coverage = ring_coverage(f64::from(dx).hypot(f64::from(dy)), radius, 3.0);
+            let mut rgba = color;
+            rgba[3] = (f64::from(color[3]) * coverage) as u8;
+            point(image, x + dx, y + dy, rgba);
+            if dx != 0 {
+                point(image, x - dx, y + dy, rgba);
+            }
         }
     }
 }
 fn blit(target: &mut RgbaImage, image: &RgbaImage, x: i32, y: i32, width: u32, opacity: f64) {
-    let height = (width as u64 * image.height() as u64 / image.width().max(1) as u64).max(1) as u32;
-    let mut image = imageops::resize(image, width.max(1), height, imageops::FilterType::Triangle);
+    let mut image = crate::raster::resize_art(image, width.max(1)).into_owned();
+    let height = image.height();
     for pixel in image.pixels_mut() {
         pixel.0[3] = (pixel.0[3] as f64 * opacity.clamp(0.0, 1.0)) as u8;
     }
@@ -411,6 +421,77 @@ fn blit(target: &mut RgbaImage, image: &RgbaImage, x: i32, y: i32, width: u32, o
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn scaled_transparent_art_keeps_its_edge_color() {
+        let art = RgbaImage::from_fn(2, 1, |x, _| {
+            if x == 0 {
+                Rgba([255, 0, 0, 255])
+            } else {
+                Rgba([0, 0, 0, 0])
+            }
+        });
+        let mut target = RgbaImage::new(8, 4);
+        blit(&mut target, &art, 4, 2, 8, 1.0);
+        let edges: Vec<_> = target.pixels().filter(|p| p[3] > 0 && p[3] < 255).collect();
+        assert!(!edges.is_empty(), "expected an antialiased edge");
+        for pixel in edges {
+            assert_eq!(
+                pixel[0], 255,
+                "transparent black must not darken the red edge: {pixel:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn native_motion_frames_are_visible_then_expire() {
+        let settings = Settings::default();
+        let start = Instant::now();
+        let mut renderer = Renderer::new();
+        renderer.wheel = Some(Wheel {
+            kind: WheelKind::Ping,
+            origin: Point::new(170, 210),
+            hot: None,
+            blend: [0.0; 8],
+            updated: start,
+            scale: 0.65,
+        });
+        renderer.pings.push(Ping {
+            id: pingloom_core::PingId::AllIn,
+            point: Point::new(500, 220),
+            started: start,
+        });
+        let frames = decode_emote(&settings.click_emote_id).unwrap();
+        assert!(frames.len() > 1);
+        renderer.emote = Some(Emote {
+            point: Point::new(820, 210),
+            started: start,
+            frames_started: start,
+            slug: settings.click_emote_id.clone(),
+            frames,
+        });
+        // Optional review frames are emitted by this exact native rasterizer, not a JS imitation.
+        let export = std::env::var_os("PINGLOOM_MOTION_PREVIEW_DIR").map(std::path::PathBuf::from);
+        if let Some(dir) = &export {
+            std::fs::create_dir_all(dir).unwrap();
+        }
+        let count = if export.is_some() { 48 } else { 4 };
+        for i in 0..count {
+            let elapsed = Duration::from_millis(i * 3000 / count);
+            renderer.wheel.as_mut().unwrap().hot = Some((i * 8 / count) as usize);
+            let frame = renderer.frame_at(&settings, start + elapsed).unwrap();
+            assert!(frame.image.pixels().any(|p| p.0[3] > 0));
+            if let Some(dir) = &export {
+                let mut canvas = RgbaImage::from_pixel(1000, 420, Rgba([34, 33, 39, 255]));
+                imageops::overlay(&mut canvas, &frame.image, frame.x as i64, frame.y as i64);
+                canvas.save(dir.join(format!("frame-{i:03}.png"))).unwrap();
+            }
+        }
+        renderer.wheel = None;
+        assert!(renderer
+            .frame_at(&settings, start + Duration::from_secs(9))
+            .is_none());
+    }
+
     #[test]
     fn native_wheel_renders_visible_transparent_pixels_and_cancels() {
         let settings = Settings::default();

@@ -114,6 +114,70 @@ pub fn effect_pop(age: f64, enter_seconds: f64) -> f64 {
     1.0 + 0.6 * (2.0 * t.powi(3) + t.powi(2))
 }
 
+/// Bundled WebP already contains its entrance, movement and exit (lolPing's sheet).
+/// Only a still fallback needs an external envelope; reduced motion uses that still.
+pub fn emote_envelope(age: f64, baked: bool, reduced: bool) -> (f64, f64) {
+    if baked && !reduced {
+        (1.0, 1.0)
+    } else {
+        (
+            if reduced { 1.0 } else { effect_pop(age, 0.25) },
+            effect_fade(age, 3.0),
+        )
+    }
+}
+
+/// Normalized art offsets, scale and entrance alpha, shared by both native renderers.
+/// Two-part pings converge diagonally; ordinary pings pop, then gently bob.
+pub fn ping_art_motion(
+    age: f64,
+    layer: usize,
+    layers: usize,
+    reduced: bool,
+) -> (f64, f64, f64, f64) {
+    if reduced {
+        return (0.0, 0.0, 1.0, 1.0);
+    }
+    let bob_age = (age - if layers == 2 { 0.5 } else { 0.3 }).max(0.0);
+    let bob = -0.0225 * (1.0 - (bob_age * std::f64::consts::TAU / 1.6).cos());
+    if layers == 2 {
+        let t = (age / 0.22).clamp(0.0, 1.0);
+        let slide = (1.0 - t * t) * 0.64;
+        (
+            if layer == 0 { slide } else { -slide },
+            -slide + bob,
+            1.0,
+            t,
+        )
+    } else {
+        (
+            0.0,
+            bob,
+            effect_pop(age, 0.28),
+            (age / 0.08).clamp(0.0, 1.0),
+        )
+    }
+}
+
+/// A dark radial wheel with a restrained rose selection, independent of hit testing.
+pub fn wheel_surface(radial: f64, selected: f64) -> [u8; 4] {
+    let r = radial.clamp(0.0, 1.0);
+    let b = selected.clamp(0.0, 1.0) * 0.55;
+    let base = [42.0 + 32.0 * r, 45.0 + 33.0 * r, 49.0 + 35.0 * r];
+    let hot = [226.0, 180.0, 189.0];
+    [
+        (base[0] + (hot[0] - base[0]) * b) as u8,
+        (base[1] + (hot[1] - base[1]) * b) as u8,
+        (base[2] + (hot[2] - base[2]) * b) as u8,
+        235,
+    ]
+}
+
+/// One-pixel analytical edge coverage, avoiding repeated alpha stamping around rings.
+pub fn ring_coverage(distance: f64, radius: f64, thickness: f64) -> f64 {
+    (thickness * 0.5 + 0.5 - (distance - radius).abs()).clamp(0.0, 1.0)
+}
+
 pub fn effect_fade(age: f64, lifetime: f64) -> f64 {
     ((lifetime - age) / (lifetime * 0.13).min(0.35)).clamp(0.0, 1.0)
 }
@@ -563,6 +627,31 @@ mod tests {
         assert!((single_frame - split_frames).abs() < 1e-9);
         assert!(selection_blend(single_frame, false, 0.05) < single_frame);
         assert_eq!(selection_blend(0.5, true, 0.0), 0.5);
+    }
+
+    #[test]
+    fn lolping_motion_preserves_baked_animation_and_shared_ping_geometry() {
+        for age in [0.0, 0.1, 0.25, 1.4, 2.9] {
+            assert_eq!(emote_envelope(age, true, false), (1.0, 1.0));
+            assert_eq!(ping_art_motion(age, 0, 2, true), (0.0, 0.0, 1.0, 1.0));
+            assert_eq!(emote_envelope(age, true, true).0, 1.0);
+        }
+        assert_eq!(emote_envelope(3.0, false, false).1, 0.0);
+        let left = ping_art_motion(0.1, 0, 2, false);
+        let right = ping_art_motion(0.1, 1, 2, false);
+        assert_eq!(left.0, -right.0);
+        assert_eq!(left.1, right.1);
+        assert!(left.1 < 0.0 && left.3 > 0.0 && left.3 < 1.0);
+        assert_eq!(ping_art_motion(0.22, 0, 2, false), (0.0, 0.0, 1.0, 1.0));
+        let before = ping_art_motion(0.3 - 1e-6, 0, 1, false);
+        let after = ping_art_motion(0.3 + 1e-6, 0, 1, false);
+        assert!((before.1 - after.1).abs() < 1e-8);
+        assert_eq!(ring_coverage(20.0, 20.0, 3.0), 1.0);
+        assert_eq!(ring_coverage(21.5, 20.0, 3.0), 0.5);
+        assert_eq!(ring_coverage(18.5, 20.0, 3.0), 0.5);
+        assert_eq!(ring_coverage(22.0, 20.0, 3.0), 0.0);
+        assert!(wheel_surface(1.0, 0.0)[0] > wheel_surface(0.0, 0.0)[0]);
+        assert!(wheel_surface(0.5, 1.0)[0] > wheel_surface(0.5, 0.0)[0]);
     }
 
     #[test]

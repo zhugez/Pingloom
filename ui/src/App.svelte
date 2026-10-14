@@ -311,6 +311,8 @@
 
   function revealControl(target: HTMLElement | null | undefined) {
     if (!target) return;
+    const disclosure = target.closest('details');
+    if (disclosure) disclosure.open = true;
     target.focus({ preventScroll: true });
     target.scrollIntoView({
       behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
@@ -320,7 +322,7 @@
 
   function focusSlot(kind: 'wheel' | 'emote_wheel', index: number) {
     focusedSlotIndex = index;
-    revealControl(document.getElementById(`${kind}-${index}`));
+    revealControl(document.getElementById(`picker-${kind}`));
   }
 
   function hotkeySummary(mods: number, vk: number): string {
@@ -782,10 +784,14 @@
                 <section class="config-card" aria-labelledby="heading-ping-slices">
                   <div class="card-header">
                     <Crosshair size={15} />
-                    <h2 id="heading-ping-slices">Directional slices</h2>
+                    <h2 id="heading-ping-slices">Choose a ping</h2>
                   </div>
                   <div class="card-body">
-                    {@render SlotEditorTable('wheel', catalog('pings'), draft.wheel, (idx, val) => setWheel('wheel', idx, val))}
+                    {@render AssetPicker('wheel', catalog('pings'), draft.wheel)}
+                    <details class="slot-details">
+                      <summary>All 8 assignments</summary>
+                      {@render SlotEditorTable('wheel', catalog('pings'), draft.wheel, (idx, val) => setWheel('wheel', idx, val))}
+                    </details>
                     {#if pathError('wheel')}
                       <span class="error-text pt-2" role="alert">{pathError('wheel')}</span>
                     {/if}
@@ -928,10 +934,14 @@
                 <section class="config-card" aria-labelledby="heading-emote-slices">
                   <div class="card-header">
                     <Heart size={15} />
-                    <h2 id="heading-emote-slices">Directional slices</h2>
+                    <h2 id="heading-emote-slices">Choose an emote</h2>
                   </div>
                   <div class="card-body">
-                    {@render SlotEditorTable('emote_wheel', catalog('emotes'), draft.emote_wheel, (idx, val) => setWheel('emote_wheel', idx, val))}
+                    {@render AssetPicker('emote_wheel', catalog('emotes'), draft.emote_wheel)}
+                    <details class="slot-details">
+                      <summary>All 8 assignments</summary>
+                      {@render SlotEditorTable('emote_wheel', catalog('emotes'), draft.emote_wheel, (idx, val) => setWheel('emote_wheel', idx, val))}
+                    </details>
                     {#if pathError('emote_wheel')}
                       <span class="error-text pt-2" role="alert">{pathError('emote_wheel')}</span>
                     {/if}
@@ -1052,6 +1062,30 @@
   </div>
 {/if}
 
+<!-- lolPing-inspired visual catalog: choose a slice, then assign artwork. -->
+{#snippet AssetPicker(kind: 'wheel' | 'emote_wheel', choices: CatalogEntry[], values: string[])}
+  {@const index = focusedSlotIndex ?? 0}
+  {@const selected = choices.find(choice => choice.id === values[index])}
+  <div class="asset-picker" id="picker-{kind}" tabindex="-1">
+    <div class="assignment-heading" aria-live="polite">
+      <span class="assignment-direction">{DIRECTIONS[index]}</span>
+      <div><strong>{selected?.name ?? 'Choose an asset'}</strong><p>Choose a slice on the wheel, then an image below.</p></div>
+    </div>
+    <div class="asset-library" aria-label="Available {kind === 'wheel' ? 'pings' : 'emotes'}">
+      {#each choices as choice}
+        <button type="button" class="asset-tile" class:assigned={values[index] === choice.id}
+          aria-pressed={values[index] === choice.id}
+          aria-label="Assign {choice.name} to {DIRECTION_LABELS[DIRECTIONS[index]]}"
+          onclick={() => { focusedSlotIndex = index; setWheel(kind, index, choice.id); }}>
+          <img src={choice.preview_url} alt="" loading="lazy" />
+          <span>{choice.name}</span>
+          {#if values[index] === choice.id}<Check size={12} class="asset-check" />{/if}
+        </button>
+      {/each}
+    </div>
+  </div>
+{/snippet}
+
 <!-- Snippet: Radial Wheel Preview -->
 {#snippet WheelRadialPreview(kind: 'wheel' | 'emote_wheel', choices: CatalogEntry[], values: string[], onSelectSlot: (idx: number) => void)}
   {@const duplicates = duplicateSlots(values)}
@@ -1060,9 +1094,9 @@
       <!-- Upstream-inspired Annular 8-segment decorative SVG geometry -->
       <svg class="radial-svg" viewBox="0 0 280 280" aria-hidden="true" focusable="false">
         <defs>
-          <radialGradient id="ring-glow-{kind}" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stop-color="#0067b8" stop-opacity="0.04" />
-            <stop offset="100%" stop-color="#0067b8" stop-opacity="0" />
+          <radialGradient id="wheel-surface" cx="50%" cy="50%" r="50%">
+            <stop offset="35%" stop-color="#2a2d31" />
+            <stop offset="100%" stop-color="#4a4e54" />
           </radialGradient>
         </defs>
         <circle cx="140" cy="140" r="134" class="radial-outer-boundary" />
@@ -1076,7 +1110,7 @@
             d={sectorPath(140, 140, 50, 134, aStart, aEnd)}
             class="radial-wedge"
             class:wedge-duplicate={isDup}
-            class:wedge-focused={isFoc}
+            class:wedge-focused={isFoc || (focusedSlotIndex === null && i === 0)}
           />
         {/each}
       </svg>
@@ -1099,14 +1133,17 @@
           type="button"
           class="wheel-node pos-{direction.toLowerCase()}"
           class:duplicate={isDuplicate}
-          class:focused={isFocused}
+          class:focused={isFocused || (focusedSlotIndex === null && i === 0)}
+          aria-pressed={(focusedSlotIndex ?? 0) === i}
           style="left: {pctX.toFixed(3)}%; top: {pctY.toFixed(3)}%;"
           onclick={() => onSelectSlot(i)}
           title="{direction} ({DIRECTION_LABELS[direction]}): {choice?.name ?? formatAssetName(values[i] ?? '')}"
         >
           <div class="node-art-wrap">
             {#if choice?.preview_url}
-              <img src={choice.preview_url} alt="" class="node-img" />
+              {#key choice.id}
+                <img src={choice.preview_url} alt="" class="node-img" />
+              {/key}
             {:else}
               <span class="node-fallback">{direction}</span>
             {/if}
