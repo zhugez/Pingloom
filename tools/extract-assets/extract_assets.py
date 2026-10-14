@@ -59,7 +59,7 @@ BANK_DIR = 'assets/sounds/wwise2016/sfx/shared/'
 EVENTS_BANK = BANK_DIR + 'hud_global_events.bnk'
 AUDIO_BANK = BANK_DIR + 'hud_global_audio.bnk'
 
-# output wav name -> Wwise event (see src/shared/pings.ts for which ping uses which file)
+# output ogg name -> Wwise event (see src/shared/pings.ts for which ping uses which file)
 SOUNDS = {
     'SRP_12': 'Play_sfx_hud_base_Pings_SRP_12',              # danger
     'SRP_9': 'Play_sfx_hud_base_Pings_SRP_9',                # push
@@ -322,7 +322,8 @@ def decode_and_mix(media: dict[int, bytes], ids: list[int], out: Path, vgmstream
         cmd += ['-i', str(w)]
     if len(wavs) > 1:  # layer containers play their children together; limit to avoid clipping
         cmd += ['-filter_complex', f'amix=inputs={len(wavs)}:normalize=0:duration=longest,alimiter=limit=0.89:level=false']
-    cmd.append(str(out))
+    # Vorbis, not Opus: rodio's `vorbis` feature (lewton) cannot decode Opus.
+    cmd += ['-c:a', 'libvorbis', '-q:a', '5', '-map_metadata', '-1', '-fflags', '+bitexact', str(out)]
     subprocess.run(cmd, check=True)
 
 
@@ -417,7 +418,7 @@ def main() -> None:
         with tempfile.TemporaryDirectory() as td:
             for name, event in SOUNDS.items():
                 ids = event_media(objs, event)
-                decode_and_mix(media, ids, SOUND_OUT / f'{name}.wav', args.vgmstream, Path(td))
+                decode_and_mix(media, ids, SOUND_OUT / f'{name}.ogg', args.vgmstream, Path(td))
                 print(f'sound {name:<13} {event} ({len(ids)} layer{"s" if len(ids) != 1 else ""})')
 
 

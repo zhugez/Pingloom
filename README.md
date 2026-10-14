@@ -66,7 +66,7 @@ The Settings window provides complete customization across three focused pages:
 
 - **Triggers**: Trigger key selectors (`Alt`, `Ctrl`, `Shift`, `Windows`, `Off`, or custom virtual keys), drag threshold numeric input (2–40 px), enable-gestures-at-launch toggle (`enabled_on_start`; not OS startup registration), pause over fullscreen games, and global toggle hotkey editor.
 - **Tactical Pings**: Interactive 8-slice radial preview with real League ping icons, real-time duplicate slot detection, 8-row slot assignment table, ping size scaling (60–220 px), display duration (1.0–8.0 s), effects volume (0–100%), tick sounds, and mute toggle.
-- **Emotes**: Illustrated picker and eight-slice radial preview, native bundled WebP animations, size (80–300 px) and audio controls. **Import custom emote** accepts PNG/JPG stills and GIF/WebP animations for wheel and trigger-tap choices: up to 8 MiB / 2048×2048 input, native artwork capped at 512px, 16 custom images / 32 MiB total. Animations are limited to 300 frames / 30 seconds / 128 MiB decoded memory and loop during the normal **3-second** native emote lifetime. Reduced motion uses the first frame. No custom audio yet. Import stores artwork immediately; assignments apply only on Save. Windows waits for animated frames instead of flashing a differently sized PNG thumbnail; built-in motion within WebP assets is preserved.
+- **Emotes**: Illustrated picker and eight-slice radial preview, native bundled WebP animations, size (80–300 px) and audio controls. **Import custom emote** accepts PNG/JPG stills and GIF/WebP animations for wheel and trigger-tap choices: up to 8 MiB / 2048×2048 input, native artwork capped at 512px, 16 custom images / 32 MiB total. Animations are limited to 300 frames / 30 seconds / 128 MiB decoded memory and loop during the normal **3-second** native emote lifetime. Reduced motion uses the first frame. No custom audio yet. Import stores artwork immediately; assignments apply only on Save. Every native renderer decodes animated frames off the input thread and waits for them instead of flashing a differently sized PNG thumbnail; built-in motion within WebP assets is preserved.
 
 > **Note on custom titlebar:** Custom HTML window caption buttons inside WebView2 cannot natively trigger the Windows 11 DWM Snap Layout flyout on hover without Win32 `WM_NCHITTEST` non-client message interception on the top-level HWND.
 
@@ -187,7 +187,7 @@ The resulting binary is located at `target/x86_64-pc-windows-gnu/debug/pingloom.
 
 ### Verification Evidence on this Checkout
 
-- **Rust Suite**: Portable core regressions and native-target tests (`cargo test --locked --all-targets`) covering geometry, gesture engine, replay logic, settings schema, oversized file protection, and legacy settings path stability.
+- **Rust Suite**: Portable core regressions and native-target tests (`cargo nextest run --locked --all-targets` in CI) covering geometry, gesture engine, replay logic, settings schema, oversized file protection, and legacy settings path stability.
 - **Frontend Suite**: 9 unit tests passing (`npm test` in `ui/`) covering slot duplication badges, asset name mappings, trigger key displays, canonical error routing, reactive drafts, compass directions, and annular SVG paths.
 - **Browser Automation Suite**: Automated verification assertions passing (`node ui/tests/verify-ui.cjs`) using headless Chrome, asserting zero browser console errors, zero runtime warning banners, proportional wheel node coordinates, responsive reflow, reduced-motion wheel positioning and field reveal, rapid tab navigation, pressed feedback, hidden-window spinner suspension, and generation-aware close calls.
 
@@ -200,7 +200,7 @@ Physical Linux/macOS gesture, permission, overlay and mixed-DPI acceptance is al
 Real Windows 11 visual and runtime smoke testing has **not** been executed on this development host. Specifically:
 - Windows-specific mailbox, hook pump, and session tests compile under `x86_64-pc-windows-gnu`, but native Win32 window message loops were not executed on a live Windows desktop.
 - Native CI-built downloads are available above; they do not establish physical input latency, RAM consumption under load or successful desktop acceptance.
-- Embedded assets (textures, WebP emotes, and audio clips) total approximately 58 MiB; expect an appropriately sized executable.
+- Embedded assets (textures, WebP emotes, and audio clips) total approximately 55 MiB; expect an appropriately sized executable.
 
 ### Windows 11 Pre-Release Manual Smoke Checklist
 

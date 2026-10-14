@@ -1113,13 +1113,13 @@ def write_webp(frames: list, out: Path, alpha_quality: int = WEBP_ALPHA_QUALITY)
     durations = [round((i + 1) * 1000 / FPS) - round(i * 1000 / FPS) for i in range(len(frames))]
     out.parent.mkdir(parents=True, exist_ok=True)
     frames[0].save(out, format='WEBP', save_all=True, append_images=frames[1:], duration=durations, loop=1,
-                   quality=WEBP_QUALITY, alpha_quality=alpha_quality, lossless=False, method=4)
+                   quality=WEBP_QUALITY, alpha_quality=alpha_quality, lossless=False, method=6)
 
 
 def write_poster(frames: list, out: Path) -> None:
     """The frame at POSTER_TIME as a still WebP, for galleries."""
     frames[min(len(frames) - 1, round(POSTER_TIME * FPS))].save(out, format='WEBP', quality=WEBP_QUALITY,
-                                                                alpha_quality=WEBP_ALPHA_QUALITY, method=4)
+                                                                alpha_quality=WEBP_ALPHA_QUALITY, method=6)
 
 
 # ---- sound ----
@@ -1160,7 +1160,7 @@ class EmoteSounds:
         return self.objs.get(fnv1_32(event), (0,))[0] == 4    # a Wwise event
 
     def render(self, events: list[str], out: Path, vgmstream: str) -> list[str]:
-        """Decodes every layer of the events with vgmstream and mixes them (all starting at 0) into an Opus .ogg.
+        """Decodes every layer of the events with vgmstream and mixes them (all starting at 0) into a Vorbis .ogg.
         Returns the events that were found."""
         found = [ev for ev in events if self.has(ev)]
         if not found:
@@ -1184,7 +1184,8 @@ class EmoteSounds:
             if len(wavs) > 1:
                 cmd += ['-filter_complex',
                         f'amix=inputs={len(wavs)}:normalize=0:duration=longest,alimiter=limit=0.89:level=false']
-            cmd += ['-c:a', 'libopus', '-b:a', '96k', '-map_metadata', '-1', '-fflags', '+bitexact', str(out)]
+            # Vorbis, not Opus: rodio's `vorbis` feature (lewton) cannot decode Opus.
+            cmd += ['-c:a', 'libvorbis', '-q:a', '5', '-map_metadata', '-1', '-fflags', '+bitexact', str(out)]
             subprocess.run(cmd, check=True)
         return found
 

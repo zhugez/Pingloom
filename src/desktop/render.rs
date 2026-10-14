@@ -11,7 +11,10 @@ use image::{imageops, Pixel, Rgba, RgbaImage};
 use pingloom_core::{geometry::pick_slice, Action, Point, Settings, WheelKind};
 use std::{
     collections::HashMap,
-    sync::Arc,
+    sync::{
+        mpsc::{self, Receiver, TryRecvError},
+        Arc,
+    },
     time::{Duration, Instant},
 };
 
@@ -39,6 +42,8 @@ struct Emote {
     frames_started: Instant,
     slug: String,
     frames: Vec<AnimatedFrame>,
+    /// Off-thread decode, so the owner loop keeps ticking input meanwhile.
+    pending: Option<Receiver<Vec<AnimatedFrame>>>,
 }
 pub(super) struct Renderer {
     wheel: Option<Wheel>,
@@ -95,7 +100,7 @@ impl Renderer {
             Action::WheelMove { slot, .. } => {
                 if let Some(wheel) = &mut self.wheel {
                     if wheel.hot != slot && slot.is_some() && settings.tick_sound {
-                        audio.play("sounds/button.wav", volume * 0.5);
+                        audio.play("sounds/button.ogg", volume * 0.5);
                     }
                     wheel.hot = slot;
                 }
@@ -124,24 +129,32 @@ impl Renderer {
                         point,
                         started: Instant::now(),
                     });
-                    audio.play(format!("sounds/{}.wav", id.asset().sound), volume);
+                    audio.play(format!("sounds/{}.ogg", id.asset().sound), volume);
                 }
                 WheelKind::Emote => {
                     let slug = slot
                         .map_or(&settings.click_emote_id, |slot| &settings.emote_wheel[slot])
                         .clone();
-                    let frames = if self.reduced || !crate::animation::has_animation(&slug) {
-                        Vec::new()
-                    } else {
-                        decode_emote(&slug).unwrap_or_default()
-                    };
+                    let pending =
+                        (!self.reduced && crate::animation::has_animation(&slug)).then(|| {
+                            let (tx, rx) = mpsc::sync_channel(1);
+                            let decoding = slug.clone();
+                            // A failed spawn or decode disconnects: the still art then shows.
+                            let _ = std::thread::Builder::new()
+                                .name("pingloom-emote-decode".into())
+                                .spawn(move || {
+                                    let _ = tx.send(decode_emote(&decoding).unwrap_or_default());
+                                });
+                            rx
+                        });
                     let started = Instant::now();
                     self.emote = Some(Emote {
                         point,
                         started,
                         frames_started: started,
                         slug: slug.clone(),
-                        frames,
+                        frames: Vec::new(),
+                        pending,
                     });
                     if settings.emote_sound {
                         audio.play(format!("emotes/{slug}.ogg"), volume);
@@ -154,6 +167,20 @@ impl Renderer {
         self.frame_at(settings, Instant::now())
     }
     fn frame_at(&mut self, settings: &Settings, now: Instant) -> Option<Frame> {
+        if let Some(emote) = &mut self.emote {
+            let ready = emote.pending.as_ref().and_then(|rx| match rx.try_recv() {
+                Ok(frames) => Some(frames),
+                Err(TryRecvError::Empty) => None,
+                Err(TryRecvError::Disconnected) => Some(Vec::new()),
+            });
+            // Like Windows: the effect's lifetime starts when its art is ready.
+            if let Some(frames) = ready {
+                emote.frames = frames;
+                emote.started = now;
+                emote.frames_started = now;
+                emote.pending = None;
+            }
+        }
         self.pings.retain(|p| {
             now.duration_since(p.started).as_secs_f64() < settings.ping_duration_s as f64
         });
@@ -366,8 +393,12 @@ impl Renderer {
                 .rev()
                 .find(|f| !self.reduced && f.at_ms <= elapsed)
                 .map(|f| Arc::new(f.image.clone()));
-            let (scale, opacity) =
-                emote_envelope(age, !emote.frames.is_empty(), self.reduced, false);
+            let (scale, opacity) = emote_envelope(
+                age,
+                !emote.frames.is_empty(),
+                self.reduced,
+                emote.pending.is_some(),
+            );
             let point = emote.point;
             let slug = emote.slug.clone();
             let art = art.or_else(|| self.asset(&format!("emotes/{slug}.png")));
@@ -476,6 +507,7 @@ mod tests {
             frames_started: start,
             slug: settings.click_emote_id.clone(),
             frames,
+            pending: None,
         });
         // Optional review frames are emitted by this exact native rasterizer, not a JS imitation.
         let export = std::env::var_os("PINGLOOM_MOTION_PREVIEW_DIR").map(std::path::PathBuf::from);
@@ -529,6 +561,7 @@ mod tests {
             frames_started: start,
             slug: id,
             frames: Vec::new(),
+            pending: None,
         });
         let frame = renderer
             .frame_at(&settings, start + Duration::from_millis(250))
@@ -562,6 +595,7 @@ mod tests {
             frames_started: start,
             slug,
             frames,
+            pending: None,
         });
         for (ms, color) in [(50, [255, 0, 0]), (90, [0, 0, 255]), (180, [255, 0, 0])] {
             let frame = renderer
@@ -578,6 +612,29 @@ mod tests {
             .pixels()
             .any(|p| p[0] == 255 && p[1] == 0 && p[2] == 0 && p[3] > 0));
         assert!(!frame.image.pixels().any(|p| p[2] == 255 && p[3] > 0));
+    }
+
+    #[test]
+    fn emote_decodes_off_thread_then_animates() {
+        let settings = Settings::default();
+        let mut renderer = Renderer::new();
+        let click = QueuedAction {
+            action: Action::Click {
+                wheel: WheelKind::Emote,
+                point: Point::new(200, 200),
+            },
+            origin: None,
+            scale: 1.0,
+        };
+        renderer.action(click, &settings, &Audio::new());
+        assert!(renderer.emote.as_ref().unwrap().pending.is_some());
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while renderer.emote.as_ref().unwrap().pending.is_some() {
+            assert!(Instant::now() < deadline, "decode never completed");
+            renderer.frame_at(&settings, Instant::now());
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(renderer.emote.as_ref().unwrap().frames.len() > 1);
     }
 
     #[test]
