@@ -68,6 +68,15 @@ pub(crate) fn asset(path: &str) -> Option<Vec<u8>> {
     let (bytes, ext) = media(id)?;
     thumbnail(&bytes, ext)
 }
+pub(crate) fn animated(id: &str) -> bool {
+    if !pingloom_core::settings::is_custom_emote(id) {
+        return false;
+    }
+    let Ok(dir) = directory() else { return false };
+    ["gif", "webp"].into_iter().any(|ext| {
+        fs::symlink_metadata(dir.join(format!("{id}.{ext}"))).is_ok_and(|m| m.file_type().is_file())
+    })
+}
 pub(crate) fn exists(id: &str) -> bool {
     media(id).is_some()
 }

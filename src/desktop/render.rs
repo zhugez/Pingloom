@@ -130,7 +130,7 @@ impl Renderer {
                     let slug = slot
                         .map_or(&settings.click_emote_id, |slot| &settings.emote_wheel[slot])
                         .clone();
-                    let frames = if self.reduced {
+                    let frames = if self.reduced || !crate::animation::has_animation(&slug) {
                         Vec::new()
                     } else {
                         decode_emote(&slug).unwrap_or_default()
@@ -366,7 +366,8 @@ impl Renderer {
                 .rev()
                 .find(|f| !self.reduced && f.at_ms <= elapsed)
                 .map(|f| Arc::new(f.image.clone()));
-            let (scale, opacity) = emote_envelope(age, !emote.frames.is_empty(), self.reduced);
+            let (scale, opacity) =
+                emote_envelope(age, !emote.frames.is_empty(), self.reduced, false);
             let point = emote.point;
             let slug = emote.slug.clone();
             let art = art.or_else(|| self.asset(&format!("emotes/{slug}.png")));

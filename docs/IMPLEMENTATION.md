@@ -24,7 +24,11 @@ wheel/tap assignments remain drafts until the ordinary validated owner Save. Sav
 rejects custom IDs absent from the library. Core schema remains version 1.
 Windows and Unix native renderers share the decoder and timing helper. Custom GIF/WebP
 loop within the ordinary three-second emote lifetime; decode readiness starts the
-playback clock. GIF zero delay defaults to 100ms and sub-10ms delays clamp to 10ms.
+playback clock. Windows hides the differently cropped PNG thumbnail while animated
+decode is pending, avoiding a visible PNG-to-WebP scale jump. Completion resets both
+playback and effect lifetime to readiness. Decode failure/worker-spawn failure releases
+pending into the still fallback; static assets and reduced motion display their still
+without waiting. Unix already decodes before exposing the effect. GIF zero delay defaults to 100ms and sub-10ms delays clamp to 10ms.
 Reduced motion and picker thumbnails use a static first-frame PNG. Existing custom PNG
 IDs/files remain compatible, and bundled WebP does not adopt custom looping. No filesystem
 plugin, remote asset URL or overlay WebView is introduced. Custom audio and library
