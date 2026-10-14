@@ -67,12 +67,14 @@ The Settings window provides complete customization across three focused pages:
 
 ### UI Previews — current warm rose design
 
-The wheel shows artwork directly on eight wedges, with a flat assignment editor alongside it. Display controls sit below the wheel; audio follows the workspace. Checkboxes and sliders share the same rose theme rather than default daisyUI colors.
+Select a slice on the dark eight-wedge wheel, then choose an image from the visual catalog alongside it. Full dropdown assignments remain under **All 8 assignments**. Display controls sit below the wheel; audio follows the workspace. Checkboxes and sliders share the same rose theme rather than default daisyUI colors.
 
-> **Note on screenshots:** The captures below are rendered UI previews generated against `ui/dist` using the automated headless test harness (`ui/tests/verify-ui.cjs`) with simulated Tauri 2 IPC and native chrome mocks. They are not direct Windows 11 DWM screenshots.
+The current three-platform `v0.1.0` build (`f073e22`) also includes shared native ping motion, baked WebP playback without a duplicate animation envelope, and premultiplied-alpha artwork sampling for cleaner edges. These changes preserve gesture timing and settings compatibility.
+
+> **Note on screenshots:** The captures below are rendered UI previews generated against `ui/dist` using the automated headless test harness (`ui/tests/verify-ui.cjs`) with simulated Tauri 2 IPC and native chrome mocks. Captures wait for fonts and finite animations to settle. They are not direct Windows 11 DWM screenshots.
 
 <p align="center">
-  <img src="docs/media/pingloom-pings-preview.png" alt="Warm rose Tactical Pings Settings: flat wheel and directional editor" width="960" />
+  <img src="docs/media/pingloom-pings-preview.png" alt="Pingloom Settings: dark radial wheel and visual ping catalog" width="960" />
 </p>
 <p align="center">
   <img src="docs/media/pingloom-triggers-preview.png" alt="Warm rose Triggers and Shortcuts Settings" width="470" />
