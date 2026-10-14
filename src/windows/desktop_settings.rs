@@ -84,9 +84,11 @@ fn trusted<R: Runtime>(window: &WebviewWindow<R>) -> Result<(), Rejection> {
         field: None,
         request_id: None,
     })?;
-    if window.label() != "settings"
-        || !local_origin(&url)
-        || !matches!(url.path(), "/" | "/index.html")
+    trusted_document(window.label(), &url)
+}
+
+fn trusted_document(label: &str, url: &tauri::Url) -> Result<(), Rejection> {
+    if label != "settings" || !local_origin(url) || !matches!(url.path(), "" | "/" | "/index.html")
     {
         return Err(Rejection {
             code: "unauthorized".into(),
@@ -831,6 +833,53 @@ pub(crate) fn schedule_open(app: AppHandle, state: Arc<DesktopSettingsState>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn bundled_settings_root_accepts_tauri_default_document_url() {
+        // Tauri's App("index.html") simplifies to its bare app URL on Unix.
+        let root = if cfg!(windows) {
+            "http://tauri.localhost"
+        } else {
+            "tauri://localhost"
+        };
+        let url = tauri::Url::parse(root).unwrap();
+        assert!(
+            trusted_document("settings", &url).is_ok(),
+            "bundled Settings root rejected at path {:?}",
+            url.path()
+        );
+    }
+    #[test]
+    fn settings_document_gate_keeps_other_windows_origins_and_paths_out() {
+        let root = if cfg!(windows) {
+            "http://tauri.localhost"
+        } else {
+            "tauri://localhost"
+        };
+        for path in ["", "/", "/index.html"] {
+            assert!(trusted_document(
+                "settings",
+                &tauri::Url::parse(&format!("{root}{path}")).unwrap()
+            )
+            .is_ok());
+        }
+        for label in ["main", "native-overlay", "settings-copy", ""] {
+            assert!(trusted_document(label, &tauri::Url::parse(root).unwrap()).is_err());
+        }
+        for url in [
+            format!("{root}/other.html"),
+            format!("{root}:1234/"),
+            "https://example.com/".into(),
+            "tauri://evil/".into(),
+            "http://tauri.localhost.evil/".into(),
+            "file:///index.html".into(),
+            "about:blank".into(),
+        ] {
+            assert!(
+                trusted_document("settings", &tauri::Url::parse(&url).unwrap()).is_err(),
+                "accepted {url}"
+            );
+        }
+    }
     #[test]
     fn candidate_requires_complete_known_fields_and_exact_wheels() {
         let valid = serde_json::to_value(Settings::default()).unwrap();
