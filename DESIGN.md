@@ -3,10 +3,10 @@
 ## Scope and ownership
 One bundled Tauri 2 Settings WebView using Svelte 5, Tailwind and daisyUI with Lucide icons. Native Rust retains gestures, overlays, replay, audio and tray. Windows is the original backend; Linux/X11 and macOS remain experimental. No production server or remote UI assets.
 
-## lolPing interaction/motion preview (local, awaiting approval)
+## lolPing interaction/motion refresh (shipped in v0.1.0)
 Reference: upstream lolPing `f24a51e5a11c2b31dab72d89a571cc4025ad3c98`,
 `WheelEditor.tsx`, `overlay/wheel.ts`, `overlay/overlay.css`, and `emoteFx.ts`.
-This preview adapts its visual catalog interaction and motion semantics, not its
+This refresh adapts its visual catalog interaction and motion semantics, not its
 Electron runtime, multiplayer, custom imports, or complete feature set.
 
 - Choose a wheel slice, then an illustrated catalog tile; keyboard activation is
@@ -35,8 +35,8 @@ Electron runtime, multiplayer, custom imports, or complete feature set.
 Browser evidence: `node ui/tests/verify-ui.cjs` (mock IPC). Native raster evidence:
 `PINGLOOM_MOTION_PREVIEW_DIR=/tmp/pingloom-native-motion cargo test --bin pingloom native_motion_frames_are_visible_then_expire`.
 The latter exports deterministic frames from the Unix rasterizer, not an OS screen
-recording; Windows visual acceptance still requires hardware. This preview is not
-in the published release until explicitly shipped.
+recording; Windows visual acceptance still requires hardware. The three-platform
+v0.1.0 release now includes these changes from build commit `f073e22`.
 
 ## Approved visual direction
 Warm, quiet desktop utility: flat property groups rather than nested cards. Keep Plus Jakarta Sans locally bundled with Vietnamese, Latin/extended and Cyrillic-extended coverage and OFL attribution.
