@@ -105,7 +105,7 @@ jobs:
             echo "SOURCE_DATE_EPOCH: $SOURCE_DATE_EPOCH"
             rustc -vV
             echo
-            cd release && { sha256sum * 2>/dev/null || shasum -a 256 *; }
+            (cd release && { sha256sum * 2>/dev/null || shasum -a 256 *; })
           } > BUILD_INFO.txt
           mv BUILD_INFO.txt "release/BUILD_INFO-${{ matrix.platform }}.txt"
       - uses: actions/upload-artifact@v4
