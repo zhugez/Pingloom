@@ -4,4 +4,8 @@
 /ui/dist/
 /gen/
 /.impeccable/review/
+/tools/extract-assets/.cache/
+/graphify-out/
+__pycache__/
+*.pyc
 *.log

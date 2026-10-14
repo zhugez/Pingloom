@@ -204,14 +204,18 @@ pub const EMOTE_ASSETS: &[&str] = &[
     "come_again",
     "magpie_oopsie",
     "such_foolishness",
+    "now_see_here",
+    "let_s_do_this",
+    "long_road_ahead",
+    "sweating_blitzcrank",
 ];
 
 pub const DEFAULT_EMOTE_WHEEL: [&str; 8] = [
+    "come_at_me",
+    "now_see_here",
+    "does_not_compute",
+    "sweating_blitzcrank",
     "unworthy_cn",
-    "poro_snax",
-    "sad_kitten",
-    "cheeky_poro",
-    "angry_kitty",
     "gg_heart",
     "bee_happy",
     "bee_mad",

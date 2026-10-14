@@ -55,7 +55,7 @@ export function platformTriggers(platform?: BootData['platform']) {
   ).map(option => ({ ...option, label: platform === 'macos' && option.value === 'win' ? 'Command' : platform === 'linux' && option.value === 'win' ? 'Super' : option.label }));
 }
 export const DEFAULT_PING_WHEEL = ['danger', 'push', 'omw', 'allin', 'assist', 'needvision', 'missing', 'enemyvision'];
-export const DEFAULT_EMOTE_WHEEL = ['unworthy_cn', 'poro_snax', 'sad_kitten', 'cheeky_poro', 'angry_kitty', 'gg_heart', 'bee_happy', 'bee_mad'];
+export const DEFAULT_EMOTE_WHEEL = ['come_at_me', 'now_see_here', 'does_not_compute', 'sweating_blitzcrank', 'unworthy_cn', 'gg_heart', 'bee_happy', 'bee_mad'];
 export function cloneSettings(value: Settings): Settings { return JSON.parse(JSON.stringify(value)) as Settings; }
 export function duplicateSlots(values: string[]): Set<number> {
   const seen = new Set<string>(); const duplicates = new Set<number>();

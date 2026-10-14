@@ -79,7 +79,7 @@ input, textarea { caret-color: var(--accent); }
 .theme-toggle { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 1px solid var(--input-line); border-radius: 6px; background: var(--paper); color: var(--ink); }
 .theme-toggle:hover { border-color: var(--focus); background: var(--surface); }
 .app-badge { display: grid; place-items: center; width: 26px; height: 26px; background: var(--surface); border-radius: 6px; }
-.app-badge img { display: block; }
+.brand-symbol { display: block; width: 20px; height: 20px; background: var(--ink); -webkit-mask: var(--brand-mark) center / contain no-repeat; mask: var(--brand-mark) center / contain no-repeat; }
 .app-titles { display: flex; align-items: baseline; gap: 8px; white-space: nowrap; }
 .app-title-bold { font-weight: 750; letter-spacing: -.02em; }
 .app-title-sub { font-size: 12px; color: var(--muted); }
