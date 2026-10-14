@@ -1,7 +1,7 @@
 # Pingloom
 
 <p align="center">
-  <img src="docs/media/pingloom-banner.svg" alt="Pingloom Banner" width="960" />
+  <img src="docs/media/brand/pingloom-mark.svg" alt="Pingloom ribbon-woven P logo" width="120" />
 </p>
 
 <p align="center">
@@ -21,12 +21,24 @@ Native Rust owns latency-sensitive low-level keyboard/mouse hooks, input replay,
 
 ---
 
+## Download — v0.1.0 prerelease
+
+| Platform | Download | Requirements |
+| --- | --- | --- |
+| Windows 11 x64 | [pingloom.exe](https://github.com/zhugez/pingloom/releases/download/v0.1.0/pingloom.exe) | Evergreen WebView2; unsigned executable |
+| Linux x64 | [DEB](https://github.com/zhugez/pingloom/releases/download/v0.1.0/Pingloom_0.1.0_amd64.deb) · [tar.gz](https://github.com/zhugez/pingloom/releases/download/v0.1.0/pingloom-linux-x64.tar.gz) | Ubuntu 24.04-compatible dependencies, compositing X11 and input-device permissions; experimental |
+| macOS ARM64 | [App ZIP](https://github.com/zhugez/pingloom/releases/download/v0.1.0/pingloom-macos-arm64.zip) | Accessibility/Input Monitoring; ad-hoc signed, not notarized; experimental |
+
+[Release notes, build provenance and SHA-256 checksums](https://github.com/zhugez/pingloom/releases/tag/v0.1.0).
+
+**Version stays at 0.1.0 while the prerelease is refreshed.** Download again to get the latest UI and fixes, even if your installed app also reports 0.1.0. Distinguish builds using the attached build commit/checksum. Earlier v0.2.x prereleases have been consolidated here. See [platform setup](docs/PLATFORMS.md) before running.
+
 ## Why Pingloom?
 
 - **Game-independent communication**: Summon tactical wheel pings (Danger, On My Way, Assist Me, Need Vision, etc.) and animated emotes on supported desktop sessions.
 - **Zero game hooking**: Operates entirely outside game processes via native OS input APIs; no game-process injection.
 - **Native execution architecture**: All gesture recognition, wheel hit-testing, and transparent overlay drawing run directly in compiled native Rust (architectural design, not an empirical latency benchmark).
-- **Modern desktop utility UX**: Settings window features Windows 11 Mica vibrancy, frameless custom window controls, and pastel wedding palette tokens (`#FFF5F5`, `#F7D6D0`, `#E2B4BD`, `#4A4A4A`) with measured button text contrast ratios (4.85:1 to 8.28:1; live Windows runtime untested).
+- **Warm, focused Settings**: Warm-white/blush surfaces, rose accents and charcoal text; separate titlebar and navigation, flat property groups, readable 36px controls, dark mode and responsive layouts. The ribbon-woven P identity carries through app icons, tray and Settings. See [design details](DESIGN.md).
 
 ---
 
@@ -47,20 +59,24 @@ Pingloom uses an eight-slice radial selection wheel with a central cancellation 
 
 The Settings window provides complete customization across three focused pages:
 
-- **Triggers**: Trigger key selectors (`Alt`, `Ctrl`, `Shift`, `Windows`, `Off`, or custom virtual keys), drag threshold numeric input (2–40 px), launch startup toggle (`enabled_on_start`), pause over fullscreen games, and global toggle hotkey editor.
+- **Triggers**: Trigger key selectors (`Alt`, `Ctrl`, `Shift`, `Windows`, `Off`, or custom virtual keys), drag threshold numeric input (2–40 px), enable-gestures-at-launch toggle (`enabled_on_start`; not OS startup registration), pause over fullscreen games, and global toggle hotkey editor.
 - **Tactical Pings**: Interactive 8-slice radial preview with real League ping icons, real-time duplicate slot detection, 8-row slot assignment table, ping size scaling (60–220 px), display duration (1.0–8.0 s), effects volume (0–100%), tick sounds, and mute toggle.
-- **Emotes**: Interactive 8-slice emote radial preview, 8-row emote assignment table with static PNG preview thumbnails (native overlay renders animated WebP), emote overlay size slider (80–300 px), and bundled emote audio toggle.
+- **Emotes**: Interactive 8-slice emote radial preview, 8-row emote assignment table with static PNG preview thumbnails (native overlay renders animated WebP), emote overlay size input (80–300 px), and bundled emote audio toggle.
 
 > **Note on custom titlebar:** Custom HTML window caption buttons inside WebView2 cannot natively trigger the Windows 11 DWM Snap Layout flyout on hover without Win32 `WM_NCHITTEST` non-client message interception on the top-level HWND.
 
-### UI Previews
+### UI Previews — current warm rose design
+
+The wheel shows artwork directly on eight wedges, with a flat assignment editor alongside it. Display controls sit below the wheel; audio follows the workspace. Checkboxes and sliders share the same rose theme rather than default daisyUI colors.
 
 > **Note on screenshots:** The captures below are rendered UI previews generated against `ui/dist` using the automated headless test harness (`ui/tests/verify-ui.cjs`) with simulated Tauri 2 IPC and native chrome mocks. They are not direct Windows 11 DWM screenshots.
 
 <p align="center">
-  <img src="docs/media/pingloom-pings-preview.png" alt="Pingloom Tactical Pings Settings Preview" width="470" />
-  &nbsp;
-  <img src="docs/media/pingloom-emotes-preview.png" alt="Pingloom Emotes Settings Preview" width="470" />
+  <img src="docs/media/pingloom-pings-preview.png" alt="Warm rose Tactical Pings Settings: flat wheel and directional editor" width="960" />
+</p>
+<p align="center">
+  <img src="docs/media/pingloom-triggers-preview.png" alt="Warm rose Triggers and Shortcuts Settings" width="470" />
+  <img src="docs/media/pingloom-emotes-preview.png" alt="Warm rose Emotes Settings" width="470" />
 </p>
 
 ---
@@ -80,7 +96,7 @@ Legacy settings storage path and schema are preserved for backwards compatibilit
 
 ### Prerequisites
 
-- **Target OS**: Windows 11 x64; experimental Linux x64/X11 and macOS (CI host architecture). [Unix build/runtime prerequisites](docs/PLATFORMS.md).
+- **Target OS**: Windows 11 x64; experimental Linux x64/X11 and macOS ARM64. [Unix build/runtime prerequisites](docs/PLATFORMS.md).
 - **Windows Runtime Prerequisite**: Microsoft **Evergreen WebView2 Runtime** (preinstalled on Windows 11; required for the Settings WebView).
 - **Build Tools**:
   - Rust stable (`x86_64-pc-windows-msvc` toolchain).
@@ -158,7 +174,7 @@ Physical Linux/macOS gesture, permission, overlay and mixed-DPI acceptance is al
 
 Real Windows 11 visual and runtime smoke testing has **not** been executed on this development host. Specifically:
 - Windows-specific mailbox, hook pump, and session tests compile under `x86_64-pc-windows-gnu`, but native Win32 window message loops were not executed on a live Windows desktop.
-- No claims are made regarding physical input latency, RAM consumption under load, installer compression, or pre-built downloadable installers.
+- Native CI-built downloads are available above; they do not establish physical input latency, RAM consumption under load or successful desktop acceptance.
 - Embedded assets (textures, WebP emotes, and audio clips) total approximately 58 MiB; expect an appropriately sized executable.
 
 ### Windows 11 Pre-Release Manual Smoke Checklist
