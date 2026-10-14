@@ -46,7 +46,7 @@ Warm, quiet desktop utility: flat property groups rather than nested cards. Keep
 - Settings-only theme controls offer Default Sapphire and the official Catppuccin Latte, Frappé, Macchiato and Mocha palettes; this renderer preference is immediate and independent of native Settings Save.
 - DaisyUI default themes are disabled. Checkbox/range primitives share explicit shell tokens, avoiding stray blue/purple defaults.
 - Theme palettes provide their own dark surfaces and Sapphire accents; forced-colors and reduced-motion rules remain supported.
-- The ribbon-woven P is preserved but must remain legible across themes: Settings uses a cropped monochrome SVG alpha mask colored with `--ink`, not hard-coded charcoal/rose. Desktop icons use a fixed dark plate, white P/blush crossing and light perimeter; GitHub gets transparent light/dark wordmark PNGs selected through `<picture>`. Review small native sizes on light/dark backgrounds and require ≥4.5:1 Settings logo contrast in all six palettes.
+- The ribbon-woven P is preserved but must remain legible across themes: Settings uses a cropped monochrome SVG alpha mask colored with `--ink`, not hard-coded charcoal/rose. Desktop icons use a fixed dark plate, white P/blush crossing and light perimeter; GitHub gets transparent light/dark wordmark PNGs selected through GitHub light/dark-mode fragments (including explicit GitHub theme overrides). Review small native sizes on light/dark backgrounds and require ≥4.5:1 Settings logo contrast in all six palettes.
 
 ## Layout and typography
 Separate 44px titlebar, 52px tab navigation, scrollable body and persistent 62px command footer. Window controls preserve native minimize/maximize and generation-aware close. Navigation is outside draggable titlebar regions.

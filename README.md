@@ -1,8 +1,6 @@
 <h1 align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/media/brand/pingloom-wordmark-dark.png" />
-    <img src="docs/media/brand/pingloom-wordmark-light.png" alt="Pingloom" width="360" />
-  </picture>
+  <img src="docs/media/brand/pingloom-wordmark-light.png#gh-light-mode-only" alt="Pingloom" width="360" />
+  <img src="docs/media/brand/pingloom-wordmark-dark.png#gh-dark-mode-only" alt="Pingloom" width="360" />
 </h1>
 
 <p align="center">
