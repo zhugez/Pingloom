@@ -1,6 +1,6 @@
 <script lang="ts">
   import { invoke } from '@tauri-apps/api/core';
-  import brandMark from '../../docs/media/brand/pingloom-mark.svg';
+  import brandMark from '../../docs/media/brand/pingloom-mark-mono.svg';
   import { getCurrentWindow } from '@tauri-apps/api/window';
   import { onMount, tick } from 'svelte';
   import {
@@ -472,7 +472,7 @@
         ondblclick={handleToggleMaximize}
       >
         <div class="app-badge" aria-hidden="true">
-          <img src={brandMark} alt="" width="22" height="22" />
+          <span class="brand-symbol" aria-hidden="true" style={`--brand-mark: url("${brandMark}")`}></span>
         </div>
         <div class="app-titles">
           <span class="app-title-bold">Pingloom</span>
