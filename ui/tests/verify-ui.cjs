@@ -219,9 +219,10 @@ function findChrome() {
           }
           if (cmd === 'import_emote') {
             window.__importCalls = (window.__importCalls || 0) + 1;
-            if (window.__rejectImport) { window.__rejectImport = false; throw { message: 'Invalid PNG.' }; }
+            if (window.__rejectImport) { window.__rejectImport = false; throw { message: 'Invalid image.' }; }
             if (typeof args.data !== 'string' || args.data.length < 12 || !args.session_id) throw { message: 'Invalid import payload.' };
-            return { id: 'custom_0000000000000001', name: 'Custom 000001', preview_url: 'data:image/png;base64,' + args.data };
+            window.__lastImportPrefix = args.data.slice(0, 4);
+            return { id: 'custom_0000000000000001', name: 'Custom 000001', preview_url: window.__tauri_mock.catalog.emotes[0].preview_url };
           }
           if (cmd === 'settings_heartbeat') {
             window.__heartbeatCount = (window.__heartbeatCount || 0) + 1;
@@ -433,10 +434,20 @@ function findChrome() {
     if (customChoices !== 8) throw new Error(`Custom emote missing from wheel/tap choices: ${customChoices}`);
     await page.evaluate(() => { window.__rejectImport = true; });
     await customPicker.uploadFile(importFile);
-    await page.waitForFunction(() => document.querySelector('#custom-emote-message').textContent.includes('Invalid PNG.'));
+    await page.waitForFunction(() => document.querySelector('#custom-emote-message').textContent.includes('Invalid image.'));
     await customPicker.uploadFile(importFile);
     await page.waitForFunction(() => document.querySelector('#custom-emote-message').textContent.includes('Imported to your local library'));
     if (await page.$$eval('option[value="custom_0000000000000001"]', options => options.length) !== customChoices) throw new Error('Duplicate import duplicated catalog entries');
+
+    const gifDirectory = fs.mkdtempSync(path.join(require('os').tmpdir(), 'pingloom-import-gif-'));
+    try {
+      const gifFile = path.join(gifDirectory, 'custom.gif');
+      fs.writeFileSync(gifFile, Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64'));
+      await customPicker.uploadFile(gifFile);
+      await page.waitForFunction(() => window.__lastImportPrefix === 'R0lG' && document.querySelector('#custom-emote-message').textContent.includes('Imported'));
+      await customPicker.uploadFile(path.join(ASSETS_DIR, 'emotes', 'facepalm.webp'));
+      await page.waitForFunction(() => window.__lastImportPrefix === 'UklG' && document.querySelector('#custom-emote-message').textContent.includes('Imported'));
+    } finally { fs.rmSync(gifDirectory, { recursive: true }); }
 
     // Capture Emotes screenshot (960x720)
     await capture(page, '03-emotes-960x720.png');

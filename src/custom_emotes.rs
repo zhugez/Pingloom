@@ -1,5 +1,5 @@
-//! Local PNG library; no IPC-supplied paths or filenames become filesystem paths.
-use image::{ImageFormat, ImageReader, Limits};
+//! Local image library; IPC-supplied paths/filenames never become filesystem paths.
+use image::ImageFormat;
 use std::{
     fs,
     io::{Cursor, Read, Write},
@@ -8,9 +8,9 @@ use std::{
 };
 
 pub(crate) const MAX_INPUT_BYTES: usize = 8 * 1024 * 1024;
-// ponytail: 16 static PNGs; add library deletion/animated imports when requested.
+// ponytail: 16 images / 32 MiB library; add delete/rename controls when requested.
 const MAX_FILES: usize = 16;
-const MAX_STORED_BYTES: usize = 2 * 1024 * 1024;
+const MAX_LIBRARY_BYTES: u64 = 32 * 1024 * 1024;
 static DIRECTORY: OnceLock<PathBuf> = OnceLock::new();
 static IMPORT: Mutex<()> = Mutex::new(());
 
@@ -25,34 +25,64 @@ fn directory() -> Result<&'static Path, String> {
         .map(PathBuf::as_path)
         .ok_or_else(|| "Emote library is unavailable".into())
 }
-fn read_png(directory: &Path, id: &str) -> Option<Vec<u8>> {
-    if !pingloom_core::settings::is_custom_emote(id) {
+fn read_file(directory: &Path, id: &str, extension: &str) -> Option<Vec<u8>> {
+    if !pingloom_core::settings::is_custom_emote(id) || !["png", "gif", "webp"].contains(&extension)
+    {
         return None;
     }
-    let path = directory.join(format!("{id}.png"));
-    if fs::symlink_metadata(&path).ok()?.file_type().is_symlink() {
+    let path = directory.join(format!("{id}.{extension}"));
+    if !fs::symlink_metadata(&path).ok()?.file_type().is_file() {
         return None;
     }
     let mut bytes = Vec::new();
     fs::File::open(path)
         .ok()?
-        .take(MAX_STORED_BYTES as u64 + 1)
+        .take(MAX_INPUT_BYTES as u64 + 1)
         .read_to_end(&mut bytes)
         .ok()?;
-    (bytes.len() <= MAX_STORED_BYTES).then_some(bytes)
+    (!bytes.is_empty() && bytes.len() <= MAX_INPUT_BYTES).then_some(bytes)
+}
+fn stored(directory: &Path, id: &str) -> Option<(Vec<u8>, &'static str)> {
+    ["png", "gif", "webp"]
+        .into_iter()
+        .find_map(|ext| read_file(directory, id, ext).map(|bytes| (bytes, ext)))
+}
+pub(crate) fn media(id: &str) -> Option<(Vec<u8>, &'static str)> {
+    stored(directory().ok()?, id)
+}
+fn thumbnail(bytes: &[u8], extension: &str) -> Option<Vec<u8>> {
+    if extension == "png" {
+        return Some(bytes.to_vec());
+    }
+    let frames = crate::animation::fit_custom(crate::animation::decode_media(bytes, true).ok()?);
+    let mut output = Cursor::new(Vec::new());
+    frames
+        .first()?
+        .image
+        .write_to(&mut output, ImageFormat::Png)
+        .ok()?;
+    Some(output.into_inner())
 }
 pub(crate) fn asset(path: &str) -> Option<Vec<u8>> {
     let id = path.strip_prefix("emotes/")?.strip_suffix(".png")?;
-    read_png(directory().ok()?, id)
+    let (bytes, ext) = media(id)?;
+    thumbnail(&bytes, ext)
 }
 pub(crate) fn exists(id: &str) -> bool {
-    directory().ok().and_then(|d| read_png(d, id)).is_some()
+    media(id).is_some()
 }
 fn ids(directory: &Path) -> Vec<String> {
     let mut ids: Vec<_> = fs::read_dir(directory)
         .into_iter()
         .flatten()
         .filter_map(Result::ok)
+        .filter(|e| {
+            e.file_type().is_ok_and(|t| t.is_file())
+                && e.path()
+                    .extension()
+                    .and_then(|x| x.to_str())
+                    .is_some_and(|x| ["png", "gif", "webp"].contains(&x))
+        })
         .filter_map(|e| e.path().file_stem()?.to_str().map(str::to_owned))
         .filter(|id| pingloom_core::settings::is_custom_emote(id))
         .collect();
@@ -67,7 +97,10 @@ pub(crate) fn catalog() -> Vec<(String, Vec<u8>)> {
     };
     ids(dir)
         .into_iter()
-        .filter_map(|id| read_png(dir, &id).map(|bytes| (id, bytes)))
+        .filter_map(|id| {
+            let (bytes, ext) = stored(dir, &id)?;
+            Some((id, thumbnail(&bytes, ext)?))
+        })
         .collect()
 }
 pub(crate) fn import(bytes: &[u8]) -> Result<String, String> {
@@ -78,44 +111,49 @@ pub(crate) fn import(bytes: &[u8]) -> Result<String, String> {
 }
 fn import_into(directory: &Path, bytes: &[u8]) -> Result<String, String> {
     if bytes.is_empty() || bytes.len() > MAX_INPUT_BYTES {
-        return Err("Choose a PNG up to 8 MiB".into());
+        return Err("Choose a PNG, JPG, GIF or WebP up to 8 MiB".into());
     }
-    let mut reader = ImageReader::with_format(Cursor::new(bytes), ImageFormat::Png);
-    let mut limits = Limits::default();
-    limits.max_image_width = Some(2048);
-    limits.max_image_height = Some(2048);
-    limits.max_alloc = Some(32 * 1024 * 1024);
-    reader.limits(limits);
-    let image = reader
-        .decode()
-        .map_err(|_| "Invalid PNG or image exceeds 2048×2048")?
-        .into_rgba8();
-    if image.width() == 0 || image.height() == 0 {
-        return Err("Empty image".into());
-    }
-    let scale = (512.0 / image.width().max(image.height()) as f32).min(1.0);
-    let image = crate::raster::resize_art_to(
-        &image,
-        (image.width() as f32 * scale).round().max(1.0) as u32,
-        (image.height() as f32 * scale).round().max(1.0) as u32,
-    );
-    let mut output = Cursor::new(Vec::new());
-    image
-        .write_to(&mut output, ImageFormat::Png)
-        .map_err(|e| e.to_string())?;
-    let output = output.into_inner();
-    if output.len() > MAX_STORED_BYTES {
-        return Err("PNG exceeds the library size limit".into());
-    }
+    let format = crate::animation::format(bytes)?;
+    // Fully validate every frame before any write, not just the thumbnail.
+    let frames = crate::animation::decode_media(bytes, false)?;
+    let (output, extension) = if matches!(format, ImageFormat::Gif | ImageFormat::WebP) {
+        // Preserve original compression, GIF disposal, alpha, timing and WebP quality.
+        (
+            bytes.to_vec(),
+            if format == ImageFormat::Gif {
+                "gif"
+            } else {
+                "webp"
+            },
+        )
+    } else {
+        let frames = crate::animation::fit_custom(frames);
+        let mut output = Cursor::new(Vec::new());
+        frames[0]
+            .image
+            .write_to(&mut output, ImageFormat::Png)
+            .map_err(|e| e.to_string())?;
+        (output.into_inner(), "png")
+    };
     fs::create_dir_all(directory).map_err(|e| e.to_string())?;
-    // Deduplicate normalized artwork; never overwrite an existing library item.
+    let mut library_bytes = 0u64;
     for id in ids(directory) {
-        if read_png(directory, &id).as_deref() == Some(output.as_slice()) {
+        for ext in ["png", "gif", "webp"] {
+            if let Ok(metadata) = fs::symlink_metadata(directory.join(format!("{id}.{ext}"))) {
+                library_bytes = library_bytes.saturating_add(metadata.len());
+            }
+        }
+        if stored(directory, &id)
+            .is_some_and(|(existing, ext)| ext == extension && existing == output)
+        {
             return Ok(id);
         }
     }
     if ids(directory).len() >= MAX_FILES {
         return Err("Custom emote library is full (16 images)".into());
+    }
+    if library_bytes.saturating_add(output.len() as u64) > MAX_LIBRARY_BYTES {
+        return Err("Custom emote library exceeds 32 MiB".into());
     }
     let mut file = tempfile::NamedTempFile::new_in(directory).map_err(|e| e.to_string())?;
     file.write_all(&output).map_err(|e| e.to_string())?;
@@ -125,7 +163,7 @@ fn import_into(directory: &Path, bytes: &[u8]) -> Result<String, String> {
         .map_err(|e| e.to_string())?
         .as_nanos() as u64;
     let id = format!("custom_{stamp:016x}");
-    file.persist_noclobber(directory.join(format!("{id}.png")))
+    file.persist_noclobber(directory.join(format!("{id}.{extension}")))
         .map_err(|e| e.to_string())?;
     Ok(id)
 }
@@ -142,13 +180,13 @@ mod tests {
         let id = import_into(dir.path(), bytes.get_ref()).unwrap();
         assert!(pingloom_core::settings::is_custom_emote(&id));
         assert_eq!(import_into(dir.path(), bytes.get_ref()).unwrap(), id);
-        let restored = image::load_from_memory(&read_png(dir.path(), &id).unwrap())
+        let restored = image::load_from_memory(&read_file(dir.path(), &id, "png").unwrap())
             .unwrap()
             .into_rgba8();
         assert_eq!(restored.dimensions(), (512, 256));
         assert_eq!(restored.get_pixel(200, 100).0, [255, 0, 0, 128]);
-        assert!(read_png(dir.path(), "../../settings").is_none());
-        assert!(import_into(dir.path(), b"not a PNG").is_err());
+        assert!(read_file(dir.path(), "../../settings", "png").is_none());
+        assert!(import_into(dir.path(), b"not an image").is_err());
         assert!(import_into(dir.path(), &vec![0; MAX_INPUT_BYTES + 1]).is_err());
         let huge = image::RgbaImage::new(2049, 1);
         let mut bytes = Cursor::new(Vec::new());
@@ -161,17 +199,72 @@ mod tests {
         let mut bytes = Cursor::new(Vec::new());
         other.write_to(&mut bytes, ImageFormat::Png).unwrap();
         assert!(import_into(dir.path(), bytes.get_ref()).is_err());
-        assert_eq!(ids(dir.path()).len(), MAX_FILES);
         let narrow_dir = tempfile::tempdir().unwrap();
         let narrow = image::RgbaImage::new(1, 2048);
         let mut bytes = Cursor::new(Vec::new());
         narrow.write_to(&mut bytes, ImageFormat::Png).unwrap();
         let id = import_into(narrow_dir.path(), bytes.get_ref()).unwrap();
         assert_eq!(
-            image::load_from_memory(&read_png(narrow_dir.path(), &id).unwrap())
+            image::load_from_memory(&read_file(narrow_dir.path(), &id, "png").unwrap())
                 .unwrap()
                 .height(),
             512
         );
+    }
+    #[test]
+    fn gif_webp_and_jpg_keep_valid_media_with_png_thumbnails() {
+        use image::{codecs::gif::GifEncoder, Delay, Frame, RgbaImage};
+        let dir = tempfile::tempdir().unwrap();
+        let mut gif = Vec::new();
+        GifEncoder::new(&mut gif)
+            .encode_frames([
+                Frame::from_parts(
+                    RgbaImage::new(2, 2),
+                    0,
+                    0,
+                    Delay::from_numer_denom_ms(50, 1),
+                ),
+                Frame::from_parts(
+                    RgbaImage::from_pixel(2, 2, image::Rgba([255, 0, 0, 255])),
+                    0,
+                    0,
+                    Delay::from_numer_denom_ms(100, 1),
+                ),
+            ])
+            .unwrap();
+        let id = import_into(dir.path(), &gif).unwrap();
+        assert_eq!(import_into(dir.path(), &gif).unwrap(), id);
+        let (restored, ext) = stored(dir.path(), &id).unwrap();
+        assert_eq!(restored, gif);
+        assert_eq!(ext, "gif");
+        assert_eq!(
+            crate::animation::decode_media(&restored, false)
+                .unwrap()
+                .len(),
+            2
+        );
+        assert_eq!(
+            image::guess_format(&thumbnail(&restored, ext).unwrap()).unwrap(),
+            ImageFormat::Png
+        );
+        let webp = crate::assets::ASSETS
+            .get_file("emotes/facepalm.webp")
+            .unwrap()
+            .contents();
+        let id = import_into(dir.path(), webp).unwrap();
+        assert_eq!(stored(dir.path(), &id).unwrap().0, webp);
+        let mut jpg = Cursor::new(Vec::new());
+        image::RgbImage::new(3, 2)
+            .write_to(&mut jpg, ImageFormat::Jpeg)
+            .unwrap();
+        let id = import_into(dir.path(), jpg.get_ref()).unwrap();
+        assert_eq!(stored(dir.path(), &id).unwrap().1, "png");
+        let overflow = tempfile::tempdir().unwrap();
+        for n in 0..4 {
+            let file =
+                fs::File::create(overflow.path().join(format!("custom_{n:016x}.gif"))).unwrap();
+            file.set_len(8 * 1024 * 1024).unwrap();
+        }
+        assert!(import_into(overflow.path(), &gif).is_err());
     }
 }

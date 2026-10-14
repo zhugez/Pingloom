@@ -355,7 +355,11 @@ impl Renderer {
         }
         if let Some(emote) = &self.emote {
             let age = now.duration_since(emote.started).as_secs_f64();
-            let elapsed = now.duration_since(emote.frames_started).as_millis() as u32;
+            let elapsed = crate::animation::playback_ms(
+                &emote.slug,
+                &emote.frames,
+                now.duration_since(emote.frames_started).as_millis() as u32,
+            );
             let art = emote
                 .frames
                 .iter()
@@ -496,7 +500,7 @@ mod tests {
     }
 
     #[test]
-    fn imported_custom_png_renders_through_the_native_emote_path() {
+    fn imported_custom_media_renders_animates_loops_and_respects_reduced_motion() {
         let directory = tempfile::tempdir().unwrap();
         crate::custom_emotes::initialize(&directory.path().join("settings.json"));
         let image = RgbaImage::from_pixel(4, 4, Rgba([12, 200, 34, 255]));
@@ -532,6 +536,47 @@ mod tests {
             .image
             .pixels()
             .any(|p| p[0] == 12 && p[1] == 200 && p[2] == 34 && p[3] > 0));
+        let mut gif = Vec::new();
+        image::codecs::gif::GifEncoder::new(&mut gif)
+            .encode_frames([
+                image::Frame::from_parts(
+                    RgbaImage::from_pixel(4, 4, Rgba([255, 0, 0, 255])),
+                    0,
+                    0,
+                    image::Delay::from_numer_denom_ms(70, 1),
+                ),
+                image::Frame::from_parts(
+                    RgbaImage::from_pixel(4, 4, Rgba([0, 0, 255, 255])),
+                    0,
+                    0,
+                    image::Delay::from_numer_denom_ms(90, 1),
+                ),
+            ])
+            .unwrap();
+        let slug = crate::custom_emotes::import(&gif).unwrap();
+        let frames = decode_emote(&slug).unwrap();
+        renderer.emote = Some(Emote {
+            point: Point::new(200, 200),
+            started: start,
+            frames_started: start,
+            slug,
+            frames,
+        });
+        for (ms, color) in [(50, [255, 0, 0]), (90, [0, 0, 255]), (180, [255, 0, 0])] {
+            let frame = renderer
+                .frame_at(&settings, start + Duration::from_millis(ms))
+                .unwrap();
+            assert!(frame.image.pixels().any(|p| p.0[0..3] == color && p[3] > 0));
+        }
+        renderer.reduced = true;
+        let frame = renderer
+            .frame_at(&settings, start + Duration::from_millis(90))
+            .unwrap();
+        assert!(frame
+            .image
+            .pixels()
+            .any(|p| p[0] == 255 && p[1] == 0 && p[2] == 0 && p[3] > 0));
+        assert!(!frame.image.pixels().any(|p| p[2] == 255 && p[3] > 0));
     }
 
     #[test]
