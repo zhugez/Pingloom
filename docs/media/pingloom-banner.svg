@@ -57,7 +57,7 @@
     <!-- Top badge -->
     <rect x="330" y="48" width="168" height="26" rx="13" fill="#FFF5F5" stroke="#E2B4BD" stroke-width="1.2" />
     <circle cx="344" cy="61" r="4.5" fill="#0067b8" />
-    <text x="356" y="65.5" font-size="11.5" font-weight="600" fill="#4A4A4A" letter-spacing="0.5">WINDOWS 11 UTILITY</text>
+    <text x="356" y="65.5" font-size="11.5" font-weight="600" fill="#4A4A4A" letter-spacing="0.5">DESKTOP UTILITY</text>
 
     <!-- Main Title -->
     <text x="330" y="118" font-size="44" font-weight="800" fill="url(#brandGrad)" letter-spacing="-0.5">Pingloom</text>

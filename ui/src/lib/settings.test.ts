@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cloneSettings, DEFAULT_EMOTE_WHEEL, DEFAULT_PING_WHEEL, DIRECTIONS, DIRECTION_LABELS, duplicateSlots, formatAssetName, pageForField, sectorPath, triggerLabel, type Settings } from './settings';
+import { cloneSettings, DEFAULT_EMOTE_WHEEL, DEFAULT_PING_WHEEL, DIRECTIONS, DIRECTION_LABELS, duplicateSlots, formatAssetName, pageForField, platformTriggers, sectorPath, triggerLabel, type Settings } from './settings';
 
 test('duplicate wheel slots mark every occurrence after the first', () => {
   assert.deepEqual([...duplicateSlots(['a', 'b', 'a', 'c', 'b'])], [2, 4]);
@@ -11,6 +11,13 @@ test('asset names are readable while preserving their persisted ids', () => {
 test('trigger display handles Off and custom keys', () => {
   assert.equal(triggerLabel(null), 'Off');
   assert.equal(triggerLabel({ key: { vk: 81 } }), 'Key 81');
+});
+test('platform choices expose only supported native triggers', () => {
+  assert.equal(platformTriggers().length, 7);
+  assert.ok(!platformTriggers('linux').some(({ value }) => value === 'mouse4' || value === 'mouse5'));
+  assert.ok(!platformTriggers('macos').some(({ value }) => value === 'caps_lock'));
+  assert.equal(platformTriggers('macos').find(({ value }) => value === 'win')?.label, 'Command');
+  assert.equal(platformTriggers('linux').find(({ value }) => value === 'win')?.label, 'Super');
 });
 test('canonical error fields route to the page containing their control', () => {
   assert.equal(pageForField('click_emote_id'), 'emotes');

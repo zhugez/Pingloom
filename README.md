@@ -6,6 +6,8 @@
 
 <p align="center">
   <a href="https://learn.microsoft.com/en-us/windows/release-health/windows11-release-information"><img src="https://img.shields.io/badge/Platform-Windows%2011%20x64-0078D4?logo=windows11&logoColor=white" alt="Platform" /></a>
+  <a href="docs/PLATFORMS.md"><img src="https://img.shields.io/badge/Linux-X11%20experimental-FCC624?logo=linux&logoColor=black" alt="Linux X11 experimental" /></a>
+  <a href="docs/PLATFORMS.md"><img src="https://img.shields.io/badge/macOS-experimental-444444?logo=apple&logoColor=white" alt="macOS experimental" /></a>
   <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/Rust-2021%20Edition-black?logo=rust&logoColor=white" alt="Rust" /></a>
   <a href="https://v2.tauri.app/"><img src="https://img.shields.io/badge/Tauri-v2-24C8DB?logo=tauri&logoColor=white" alt="Tauri 2" /></a>
   <a href="https://svelte.dev/"><img src="https://img.shields.io/badge/Svelte-v5-FF3E00?logo=svelte&logoColor=white" alt="Svelte 5" /></a>
@@ -13,16 +15,16 @@
   <a href="https://github.com/zhugez/pingloom/issues"><img src="https://img.shields.io/badge/Issues-zhugez%2Fpingloom-informational?logo=github" alt="Issue Tracker" /></a>
 </p>
 
-Pingloom places League of Legends tactical pings and animated emotes on the Windows desktop through quick radial gestures, completely independent of the game client.
+Pingloom places League of Legends tactical pings and animated emotes on your desktop through quick radial gestures, independent of the game client. Windows keeps its existing backend; Linux/X11 and macOS backends are experimental. See [platform requirements and permissions](docs/PLATFORMS.md).
 
-Native Rust owns latency-sensitive low-level keyboard/mouse hooks, input replay, gesture state machine, transparent layered overlays, animated WebP playback, audio effects, and notification tray icon. Settings is a single bundled local Tauri 2 WebView built with Svelte 5, Vite, daisyUI, `@lucide/svelte`, and local SIL OFL variable Plus Jakarta Sans typography. Overlays and hooks are strictly native Win32, not WebViews. Pingloom is not a website, hosted service, SaaS dashboard, or production Node application.
+Native Rust owns latency-sensitive low-level keyboard/mouse hooks, input replay, gesture state machine, transparent layered overlays, animated WebP playback, audio effects, and notification tray icon. Settings is a single bundled local Tauri 2 WebView built with Svelte 5, Vite, daisyUI, `@lucide/svelte`, and local SIL OFL variable Plus Jakarta Sans typography. Overlays and hooks are native: Win32 on Windows, evdev/X11 + GTK/Cairo on Linux, and Quartz + AppKit on macOS—not WebViews. Pingloom is not a website, hosted service, SaaS dashboard, or production Node application.
 
 ---
 
 ## Why Pingloom?
 
-- **Game-independent communication**: Summon tactical wheel pings (Danger, On My Way, Assist Me, Need Vision, etc.) and animated emotes anywhere on your Windows desktop.
-- **Zero game hooking**: Operates entirely outside game processes via standard Windows user-input hooks (`WH_KEYBOARD_LL`, `WH_MOUSE_LL`).
+- **Game-independent communication**: Summon tactical wheel pings (Danger, On My Way, Assist Me, Need Vision, etc.) and animated emotes on supported desktop sessions.
+- **Zero game hooking**: Operates entirely outside game processes via native OS input APIs; no game-process injection.
 - **Native execution architecture**: All gesture recognition, wheel hit-testing, and transparent overlay drawing run directly in compiled native Rust (architectural design, not an empirical latency benchmark).
 - **Modern desktop utility UX**: Settings window features Windows 11 Mica vibrancy, frameless custom window controls, and pastel wedding palette tokens (`#FFF5F5`, `#F7D6D0`, `#E2B4BD`, `#4A4A4A`) with measured button text contrast ratios (4.85:1 to 8.28:1; live Windows runtime untested).
 
@@ -69,6 +71,7 @@ Legacy settings storage path and schema are preserved for backwards compatibilit
 
 - **Persistence Path**: Settings persist at `%APPDATA%\lolPing\settings.json`. The legacy directory and settings schema are preserved and verified via unit test `legacy_settings_path_remains_stable_for_compatibility` (live upgrade runtime untested).
 - **Application Identifier**: The Tauri application identifier is maintained as `com.lolping.desktop` in `tauri.conf.json` for update continuity and legacy compatibility.
+- **Linux/macOS Storage**: New per-user `pingloom/settings.json` files under the OS config directory; see [platform paths](docs/PLATFORMS.md).
 - **Native IPC & WM Classes**: Internal native Win32 window classes (`pingloom-main`, `pingloom-overlay`, `pingloom-settings`) use the new brand; IPC command structures remain stable.
 
 ---
@@ -77,8 +80,8 @@ Legacy settings storage path and schema are preserved for backwards compatibilit
 
 ### Prerequisites
 
-- **Target OS**: Windows 11 x64.
-- **Runtime Prerequisite**: Microsoft **Evergreen WebView2 Runtime** (preinstalled on Windows 11; required for the Settings WebView).
+- **Target OS**: Windows 11 x64; experimental Linux x64/X11 and macOS (CI host architecture). [Unix build/runtime prerequisites](docs/PLATFORMS.md).
+- **Windows Runtime Prerequisite**: Microsoft **Evergreen WebView2 Runtime** (preinstalled on Windows 11; required for the Settings WebView).
 - **Build Tools**:
   - Rust stable (`x86_64-pc-windows-msvc` toolchain).
   - Visual Studio 2022 Build Tools (with "Desktop development with C++" workload).
@@ -108,6 +111,10 @@ Legacy settings storage path and schema are preserved for backwards compatibilit
    ```powershell
    .\target\x86_64-pc-windows-msvc\release\pingloom.exe
    ```
+
+### Native Linux/macOS
+
+Build the frontend as above, then run `cargo build --locked --release --bin pingloom` on the target OS. Launch `target/release/pingloom --settings` to open Settings without a tray click. macOS releases use an app bundle; Linux needs explicit input-device access. [Full instructions and unverified acceptance checklist](docs/PLATFORMS.md).
 
 ### Cross-Compilation on Linux (GNU Target)
 
@@ -139,9 +146,13 @@ The resulting binary is located at `target/x86_64-pc-windows-gnu/debug/pingloom.
 
 ### Verification Evidence on this Checkout
 
-- **Rust Suite**: 50 unit tests passing (`cargo test --all-targets`) covering geometry, gesture engine, replay logic, settings schema, oversized file protection, and legacy settings path stability.
-- **Frontend Suite**: 8 unit tests passing (`npm test` in `ui/`) covering slot duplication badges, asset name mappings, trigger key displays, canonical error routing, reactive drafts, compass directions, and annular SVG paths.
-- **Browser Automation Suite**: 14 automated verification assertions passing (`node ui/tests/verify-ui.cjs`) using headless Chrome, asserting zero browser console errors, zero runtime warning banners, proportional wheel node coordinates, responsive reflow, and generation-aware close calls.
+- **Rust Suite**: Portable core regressions and native-target tests (`cargo test --locked --all-targets`) covering geometry, gesture engine, replay logic, settings schema, oversized file protection, and legacy settings path stability.
+- **Frontend Suite**: 9 unit tests passing (`npm test` in `ui/`) covering slot duplication badges, asset name mappings, trigger key displays, canonical error routing, reactive drafts, compass directions, and annular SVG paths.
+- **Browser Automation Suite**: Automated verification assertions passing (`node ui/tests/verify-ui.cjs`) using headless Chrome, asserting zero browser console errors, zero runtime warning banners, proportional wheel node coordinates, responsive reflow, reduced-motion wheel positioning and field reveal, rapid tab navigation, pressed feedback, hidden-window spinner suspension, and generation-aware close calls.
+
+### Runtime Caveats
+
+Physical Linux/macOS gesture, permission, overlay and mixed-DPI acceptance is also unverified. CI runs native-target tests and builds, not a physical desktop. Linux is X11-only; macOS bundles are ad-hoc signed and not notarized.
 
 ### Windows 11 Runtime Caveats
 

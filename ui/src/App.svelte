@@ -1,7 +1,7 @@
 <script lang="ts">
   import { invoke } from '@tauri-apps/api/core';
   import { getCurrentWindow } from '@tauri-apps/api/window';
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import {
     Activity,
     AlertCircle,
@@ -32,7 +32,7 @@
     formatAssetName,
     pageForField,
     sectorPath,
-    TRIGGERS,
+    platformTriggers,
     type BootData,
     type CatalogEntry,
     type FieldError,
@@ -53,6 +53,8 @@
   let formEl: HTMLFormElement | undefined = $state();
   let focusedSlotIndex: number | null = $state(null);
   let isMaximized = $state(false);
+  let documentHidden = $state(false);
+  const TRIGGERS = $derived.by(() => platformTriggers(boot?.platform));
 
   const pages = [
     { id: 'triggers' as const, label: 'Triggers', icon: Keyboard },
@@ -61,6 +63,7 @@
   ];
 
   onMount(() => {
+    documentHidden = document.hidden;
     let heartbeat: ReturnType<typeof setInterval> | undefined;
     let heartbeatPending = false;
     let unlistenClose: (() => void) | undefined;
@@ -273,11 +276,8 @@
           errors = { [rejection.field]: rejection as FieldError };
           const field = rejection.field;
           page = pageForField(field);
-          requestAnimationFrame(() => {
-            const target = formEl?.querySelector<HTMLElement>(`[data-field="${CSS.escape(field)}"]`);
-            target?.focus();
-            target?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-          });
+          await tick();
+          revealControl(formEl?.querySelector<HTMLElement>(`[data-field="${CSS.escape(field)}"]`));
         }
         saveMessage = rejection.message ?? 'Settings could not be saved. Your changes are still here.';
       } else {
@@ -308,11 +308,18 @@
     });
   }
 
+  function revealControl(target: HTMLElement | null | undefined) {
+    if (!target) return;
+    target.focus({ preventScroll: true });
+    target.scrollIntoView({
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+      block: 'nearest',
+    });
+  }
+
   function focusSlot(kind: 'wheel' | 'emote_wheel', index: number) {
     focusedSlotIndex = index;
-    const selectEl = document.getElementById(`${kind}-${index}`);
-    selectEl?.focus();
-    selectEl?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    revealControl(document.getElementById(`${kind}-${index}`));
   }
 
   function hotkeySummary(mods: number, vk: number): string {
@@ -320,7 +327,7 @@
     if (mods & 1) parts.push('Ctrl');
     if (mods & 2) parts.push('Alt');
     if (mods & 4) parts.push('Shift');
-    if (mods & 8) parts.push('Win');
+    if (mods & 8) parts.push(boot?.platform === 'macos' ? 'Command' : boot?.platform === 'linux' ? 'Super' : 'Win');
     parts.push(vkLabel(vk));
     return parts.join(' + ');
   }
@@ -330,9 +337,10 @@
   <title>Pingloom Settings</title>
 </svelte:head>
 <svelte:window onkeydown={onKeydown} onwheel={onWheel} />
+<svelte:document onvisibilitychange={() => documentHidden = document.hidden} />
 
 {#if loading}
-  <main class="boot-state" aria-live="polite">
+  <main class="boot-state" class:window-hidden={documentHidden} aria-live="polite">
     <LoaderCircle size={24} class="spin" />
     <span>Loading Settings…</span>
   </main>
@@ -347,7 +355,7 @@
     </button>
   </main>
 {:else}
-  <div class="desktop-shell">
+  <div class="desktop-shell" class:window-hidden={documentHidden}>
     <!-- Top Utility Header with integrated compact navigation tabs and window controls -->
     <header class="desktop-header">
       <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -592,7 +600,7 @@
                   <div class="modifiers-group">
                     <span class="sublabel">Modifiers:</span>
                     <div class="modifiers-list">
-                      {#each [{ label: 'Ctrl', bit: 1 }, { label: 'Alt', bit: 2 }, { label: 'Shift', bit: 4 }, { label: 'Windows', bit: 8 }] as mod}
+                      {#each [{ label: 'Ctrl', bit: 1 }, { label: 'Alt', bit: 2 }, { label: 'Shift', bit: 4 }, { label: boot.platform === 'macos' ? 'Command' : boot.platform === 'linux' ? 'Super' : 'Windows', bit: 8 }] as mod}
                         <label class="mod-pill">
                           <input
                             type="checkbox"

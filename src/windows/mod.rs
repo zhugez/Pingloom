@@ -1,4 +1,4 @@
-mod assets;
+use crate::assets;
 mod audio;
 pub(crate) mod desktop_settings;
 mod overlay;

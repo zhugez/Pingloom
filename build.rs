@@ -1,5 +1,5 @@
 fn main() {
-    if std::env::var("TARGET").is_ok_and(|target| target.contains("windows")) {
+    if std::env::var_os("CARGO_FEATURE_DESKTOP").is_some() {
         tauri_build::build()
     }
 }

@@ -4,14 +4,16 @@ use std::ptr::{null, null_mut};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+pub(crate) use crate::animation::{decode_emote, AnimatedFrame};
 use crate::logic::{
-    caption_mask_usable_after_flush, composite_premultiplied_bgra, wheel_boundary_angle_degrees,
-    wheel_wedge_outline,
+    caption_mask_usable_after_flush, composite_premultiplied_bgra, effect_fade, effect_pop,
+    selection_blend, wheel_boundary_angle_degrees, wheel_wedge_outline,
 };
 use image::RgbaImage;
 use pingloom_core::model::{PingId, WheelKind};
 use pingloom_core::settings::Settings;
 use pingloom_core::{geometry::pick_slice, Point};
+#[cfg(test)]
 use webp_animation::Decoder;
 use windows_sys::core::w;
 use windows_sys::Win32::Foundation::{HINSTANCE, HWND, LPARAM, POINT, SIZE};
@@ -23,10 +25,11 @@ use windows_sys::Win32::Graphics::Gdi::{
     DT_SINGLELINE, DT_VCENTER, FW_SEMIBOLD, HBITMAP, HDC, HFONT, HGDIOBJ, TRANSPARENT,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, RegisterClassW, SetWindowPos, ShowWindow, UpdateLayeredWindow,
-    CS_HREDRAW, CS_VREDRAW, HWND_TOPMOST, SWP_NOACTIVATE, SWP_SHOWWINDOW, SW_HIDE,
-    SW_SHOWNOACTIVATE, ULW_ALPHA, WNDCLASSW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
-    WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
+    CreateWindowExW, DefWindowProcW, RegisterClassW, SetWindowPos, ShowWindow,
+    SystemParametersInfoW, UpdateLayeredWindow, CS_HREDRAW, CS_VREDRAW, HWND_TOPMOST,
+    SPI_GETCLIENTAREAANIMATION, SWP_NOACTIVATE, SWP_SHOWWINDOW, SW_HIDE, SW_SHOWNOACTIVATE,
+    ULW_ALPHA, WNDCLASSW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
+    WS_EX_TRANSPARENT, WS_POPUP,
 };
 
 use super::assets::ASSETS;
@@ -35,14 +38,6 @@ const WHEEL_INNER: f64 = 86.0;
 const WHEEL_OUTER: f64 = 220.0;
 const MAX_PINGS: usize = 60;
 const EMOTE_LIFETIME: Duration = Duration::from_secs(3);
-const MAX_ANIMATION_BYTES: usize = 128 * 1024 * 1024;
-const MAX_ANIMATION_FRAMES: usize = 300;
-
-#[derive(Clone)]
-pub struct AnimatedFrame {
-    pub at_ms: u32,
-    image: RgbaImage,
-}
 
 struct PingFx {
     id: PingId,
@@ -57,6 +52,25 @@ struct EmoteFx {
     started: Instant,
     still: RgbaImage,
     frames: Option<Vec<AnimatedFrame>>,
+    animation_started: Option<Instant>,
+}
+
+impl EmoteFx {
+    fn image_at(&self, now: Instant, reduced_motion: bool) -> &RgbaImage {
+        if !reduced_motion {
+            let elapsed = self.animation_started.map_or(0, |started| {
+                now.saturating_duration_since(started).as_millis() as u32
+            });
+            if let Some(frame) = self
+                .frames
+                .as_ref()
+                .and_then(|frames| frames.iter().rev().find(|frame| frame.at_ms <= elapsed))
+            {
+                return &frame.image;
+            }
+        }
+        &self.still
+    }
 }
 
 struct CaptionMask {
@@ -76,6 +90,9 @@ struct WheelFx {
     pointer: Point,
     scale: f64,
     hot: Option<usize>,
+    selection: [f64; 8],
+    opened: Instant,
+    updated: Instant,
     caption_font: HFONT,
     caption_mask: Option<CaptionMask>,
 }
@@ -160,6 +177,8 @@ pub struct Overlay {
     left: i32,
     top: i32,
     image_cache: HashMap<String, Arc<RgbaImage>>,
+    reduced_motion: bool,
+    motion_checked: Instant,
     pings: Vec<PingFx>,
     emote: Option<EmoteFx>,
     wheel: Option<WheelFx>,
@@ -267,6 +286,8 @@ impl Overlay {
                 left,
                 top,
                 image_cache: HashMap::new(),
+                reduced_motion: native_reduced_motion(),
+                motion_checked: Instant::now(),
                 pings: Vec::new(),
                 emote: None,
                 wheel: None,
@@ -316,6 +337,9 @@ impl Overlay {
             pointer: origin,
             scale,
             hot: None,
+            selection: [0.0; 8],
+            opened: Instant::now(),
+            updated: Instant::now(),
             caption_font,
             caption_mask: unsafe { CaptionMask::new(self.dc, scale) },
         });
@@ -379,20 +403,27 @@ impl Overlay {
             started: Instant::now(),
             still,
             frames: None,
+            animation_started: None,
         });
-        Some(slug.to_owned())
+        (!self.reduced_motion).then(|| slug.to_owned())
     }
 
     pub fn set_emote_frames(&mut self, slug: &str, frames: Vec<AnimatedFrame>) {
         if let Some(emote) = &mut self.emote {
-            if emote.slug == slug {
+            if emote.slug == slug && emote.frames.is_none() {
                 emote.frames = Some(frames);
+                emote.animation_started = Some(Instant::now());
             }
         }
     }
 
     pub fn tick(&mut self, settings: &Settings) {
         let now = Instant::now();
+        // Refresh the OS preference without querying it for every rendered frame.
+        if now.duration_since(self.motion_checked) >= Duration::from_secs(1) {
+            self.reduced_motion = native_reduced_motion();
+            self.motion_checked = now;
+        }
         let duration = Duration::from_secs_f32(settings.ping_duration_s);
         self.pings
             .retain(|ping| now.duration_since(ping.started) < duration);
@@ -418,8 +449,29 @@ impl Overlay {
                 height: self.height as usize,
                 left: self.left,
                 top: self.top,
+                opacity: 1.0,
             };
             if let Some(wheel) = &mut self.wheel {
+                let elapsed = now.saturating_duration_since(wheel.updated).as_secs_f64();
+                wheel.updated = now;
+                for (slot, amount) in wheel.selection.iter_mut().enumerate() {
+                    let selected = wheel.hot == Some(slot);
+                    *amount = if self.reduced_motion {
+                        if selected {
+                            1.0
+                        } else {
+                            0.0
+                        }
+                    } else {
+                        selection_blend(*amount, selected, elapsed)
+                    };
+                }
+                if !self.reduced_motion {
+                    let progress = (now.saturating_duration_since(wheel.opened).as_secs_f64()
+                        / 0.12)
+                        .clamp(0.0, 1.0);
+                    canvas.opacity = 0.75 + 0.25 * (1.0 - (1.0 - progress).powi(3));
+                }
                 let (items, names) = match wheel.kind {
                     WheelKind::Ping => (
                         settings
@@ -448,20 +500,22 @@ impl Overlay {
                     .and_then(|slot| names.get(slot))
                     .map(String::as_str);
                 draw_wheel_caption(&mut canvas, wheel, selected);
+                canvas.opacity = 1.0;
             }
             for ping in &self.pings {
                 let age = now.duration_since(ping.started).as_secs_f64();
-                canvas.draw_ping(ping, settings, age, &mut self.image_cache);
+                canvas.draw_ping(
+                    ping,
+                    settings,
+                    age,
+                    &mut self.image_cache,
+                    self.reduced_motion,
+                );
             }
             if let Some(emote) = &self.emote {
-                let elapsed = now.duration_since(emote.started).as_millis() as u32;
-                let frame = emote
-                    .frames
-                    .as_ref()
-                    .and_then(|frames| frames.iter().rev().find(|frame| frame.at_ms <= elapsed));
-                let image = frame.map_or(&emote.still, |frame| &frame.image);
+                let image = emote.image_at(now, self.reduced_motion);
                 let life = now.duration_since(emote.started).as_secs_f64();
-                canvas.draw_emote(emote, image, life);
+                canvas.draw_emote(emote, image, life, self.reduced_motion);
             }
             let screen_dc = GetDC(null_mut());
             let destination = POINT {
@@ -599,46 +653,17 @@ fn readable_emote_name(slug: &str) -> String {
         .join(" ")
 }
 
-pub fn decode_emote(slug: &str) -> Option<Vec<AnimatedFrame>> {
-    let bytes = ASSETS.get_file(format!("emotes/{slug}.webp"))?.contents();
-    let decoder = Decoder::new(bytes).ok()?;
-    let (width, height) = decoder.dimensions();
-    if width == 0 || height == 0 || width > 2048 || height > 2048 {
-        return None;
-    }
-    let mut frames = Vec::new();
-    let mut decoded_bytes = 0usize;
-    for frame in decoder {
-        if frames.len() >= MAX_ANIMATION_FRAMES {
-            return None;
-        }
-        let (frame_width, frame_height) = frame.dimensions();
-        let size = (frame_width as usize)
-            .checked_mul(frame_height as usize)?
-            .checked_mul(4)?;
-        decoded_bytes = decoded_bytes.checked_add(size)?;
-        if decoded_bytes > MAX_ANIMATION_BYTES || frame.data().len() != size {
-            return None;
-        }
-        let image = RgbaImage::from_raw(frame_width, frame_height, frame.data().to_vec())?;
-        frames.push(AnimatedFrame {
-            at_ms: frame.timestamp().max(0) as u32,
-            image,
-        });
-    }
-    (!frames.is_empty()).then_some(frames)
-}
-
 struct Canvas<'a> {
     pixels: &'a mut [u8],
     width: usize,
     height: usize,
     left: i32,
     top: i32,
+    opacity: f64,
 }
 
 impl Canvas<'_> {
-    fn point(&mut self, x: i32, y: i32, rgba: [u8; 4]) {
+    fn point(&mut self, x: i32, y: i32, mut rgba: [u8; 4]) {
         let x = x - self.left;
         let y = y - self.top;
         if x < 0 || y < 0 || x as usize >= self.width || y as usize >= self.height {
@@ -651,6 +676,9 @@ impl Canvas<'_> {
             self.pixels[index + 2],
             self.pixels[index + 3],
         ];
+        if self.opacity != 1.0 {
+            rgba[3] = (f64::from(rgba[3]) * self.opacity) as u8;
+        }
         let blended = composite_premultiplied_bgra(destination, rgba);
         self.pixels[index..index + 4].copy_from_slice(&blended);
     }
@@ -790,17 +818,19 @@ impl Canvas<'_> {
         let outer = WHEEL_OUTER * scale;
         let inner = WHEEL_INNER * scale;
         let extent = outer.ceil() as i32;
+        let colors: [[u8; 4]; 8] = std::array::from_fn(|slot| {
+            let base = [35.0, 42.0, 50.0, 218.0];
+            let selected = [221.0, 206.0, 154.0, 238.0];
+            std::array::from_fn(|channel| {
+                (base[channel] + (selected[channel] - base[channel]) * wheel.selection[slot]) as u8
+            })
+        });
         for dy in -extent..=extent {
             for dx in -extent..=extent {
                 let distance = f64::from(dx).hypot(f64::from(dy));
                 if distance >= inner && distance <= outer {
                     let slice = pick_slice(f64::from(dx), f64::from(dy), 0.0);
-                    let hot = wheel.hot == slice;
-                    let color = if hot {
-                        [221, 206, 154, 238]
-                    } else {
-                        [35, 42, 50, 218]
-                    };
+                    let color = slice.map_or([35, 42, 50, 218], |slot| colors[slot]);
                     self.point(wheel.origin.x + dx, wheel.origin.y + dy, color);
                 }
             }
@@ -854,8 +884,7 @@ impl Canvas<'_> {
                 format!("emotes/{item}.png")
             };
             if let Some(icon) = self.asset(cache, &image_name) {
-                let icon_size =
-                    (46.0 * scale * if wheel.hot == Some(slot) { 1.18 } else { 1.0 }) as u32;
+                let icon_size = (46.0 * scale * (1.0 + 0.18 * wheel.selection[slot])) as u32;
                 if wheel.hot == Some(slot) {
                     self.circle(
                         center,
@@ -881,21 +910,28 @@ impl Canvas<'_> {
         settings: &Settings,
         age: f64,
         cache: &mut HashMap<String, Arc<RgbaImage>>,
+        reduced_motion: bool,
     ) {
         let asset = ping.id.asset();
         let size = f64::from(settings.ping_size_px);
         let ping_color = color(asset.color);
+        let fade = effect_fade(age, f64::from(settings.ping_duration_s));
         self.ellipse(
             ping.point,
             size * 0.42,
             size * 0.12,
-            [ping_color[0], ping_color[1], ping_color[2], 85],
+            [
+                ping_color[0],
+                ping_color[1],
+                ping_color[2],
+                (85.0 * fade) as u8,
+            ],
         );
         for (delay, ring_alpha) in [(0.0, 230), (0.22, 210), (1.4, 190)] {
             let t = age - delay;
-            if (0.0..0.65).contains(&t) {
+            if !reduced_motion && (0.0..0.65).contains(&t) {
                 let radius = size * 0.545 * (0.25 + 1.10 * t / 0.65);
-                let alpha = (f64::from(ring_alpha) * (1.0 - t / 0.65)) as u8;
+                let alpha = (f64::from(ring_alpha) * (1.0 - t / 0.65) * fade) as u8;
                 self.circle(
                     ping.point,
                     radius,
@@ -904,24 +940,18 @@ impl Canvas<'_> {
                 );
             }
         }
-        let fade = if age > f64::from(settings.ping_duration_s) * 0.87 {
-            1.0 - (age / f64::from(settings.ping_duration_s) - 0.87) / 0.13
-        } else {
+        let pop = if reduced_motion {
             1.0
-        }
-        .clamp(0.0, 1.0);
-        let pop = if age < 0.28 {
-            0.4 + 0.75 * (age / 0.28).min(1.0)
         } else {
-            1.0 + 0.04 * (age * std::f64::consts::TAU / 1.6).sin()
+            effect_pop(age, 0.28)
         };
-        let art_y = ping.point.y - (size * 0.73) as i32;
         for (index, art) in asset.art.iter().enumerate() {
             let Some(image) = self.asset(cache, &format!("textures/{art}.png")) else {
                 continue;
             };
             let art_size = (size * pop) as u32;
-            let offset = if asset.art.len() == 2 && age < 0.22 {
+            let art_y = ping.point.y - (f64::from(art_size) * 0.73) as i32;
+            let offset = if !reduced_motion && asset.art.len() == 2 && age < 0.22 {
                 let slide = (1.0 - age / 0.22).max(0.0) * size * 0.64;
                 if index == 0 {
                     slide
@@ -941,28 +971,36 @@ impl Canvas<'_> {
         }
     }
 
-    fn draw_emote(&mut self, emote: &EmoteFx, image: &RgbaImage, age: f64) {
+    fn draw_emote(&mut self, emote: &EmoteFx, image: &RgbaImage, age: f64, reduced_motion: bool) {
         let size = f64::from(emote.size);
-        let bob = (age * std::f64::consts::TAU / 1.4).sin() * 4.0;
-        let pop = if age < 0.25 {
-            (age / 0.25 * 1.15).min(1.15)
-        } else {
+        let pop = if reduced_motion {
             1.0
-        };
-        let fade = if age > 2.65 {
-            ((3.0 - age) / 0.35).clamp(0.0, 1.0)
         } else {
-            1.0
+            effect_pop(age, 0.25)
         };
-        let draw_size = (size * 1.25 * pop.max(0.1)) as u32;
+        let fade = effect_fade(age, EMOTE_LIFETIME.as_secs_f64());
+        let draw_size = (size * 1.25 * pop) as u32;
         self.image(
             image,
             emote.point.x - draw_size as i32 / 2,
-            emote.point.y - draw_size as i32 / 2 + bob as i32,
+            emote.point.y - draw_size as i32 / 2,
             draw_size,
             fade,
         );
     }
+}
+
+fn native_reduced_motion() -> bool {
+    let mut enabled = 1i32;
+    let available = unsafe {
+        SystemParametersInfoW(
+            SPI_GETCLIENTAREAANIMATION,
+            0,
+            (&mut enabled as *mut i32).cast(),
+            0,
+        )
+    };
+    available != 0 && enabled == 0
 }
 
 fn color(hex: &str) -> [u8; 3] {
@@ -981,3 +1019,69 @@ const SM_CXVIRTUALSCREEN: i32 = 78;
 const SM_CYVIRTUALSCREEN: i32 = 79;
 
 use windows_sys::Win32::UI::WindowsAndMessaging::GetSystemMetrics;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn playback_uses_decode_ready_clock_and_stills_for_reduced_motion() {
+        let now = Instant::now();
+        let pixel = |value| RgbaImage::from_pixel(1, 1, image::Rgba([value, 0, 0, 255]));
+        let emote = EmoteFx {
+            slug: "test".into(),
+            point: Point::new(0, 0),
+            size: 80,
+            started: now - Duration::from_secs(2),
+            still: pixel(9),
+            frames: Some(vec![
+                AnimatedFrame {
+                    at_ms: 0,
+                    image: pixel(1),
+                },
+                AnimatedFrame {
+                    at_ms: 100,
+                    image: pixel(2),
+                },
+            ]),
+            animation_started: Some(now),
+        };
+        assert_eq!(emote.image_at(now, false).get_pixel(0, 0).0[0], 1);
+        assert_eq!(
+            emote
+                .image_at(now + Duration::from_millis(99), false)
+                .get_pixel(0, 0)
+                .0[0],
+            1
+        );
+        assert_eq!(
+            emote
+                .image_at(now + Duration::from_millis(100), false)
+                .get_pixel(0, 0)
+                .0[0],
+            2
+        );
+        assert_eq!(
+            emote
+                .image_at(now + Duration::from_secs(1), false)
+                .get_pixel(0, 0)
+                .0[0],
+            2
+        );
+        assert_eq!(emote.image_at(now, true).get_pixel(0, 0).0[0], 9);
+    }
+
+    #[test]
+    fn decoded_webp_frames_begin_at_zero_and_use_previous_frame_end() {
+        let frames = decode_emote("facepalm").expect("bundled animated emote must decode");
+        let bytes = ASSETS.get_file("emotes/facepalm.webp").unwrap().contents();
+        let mut previous_end = 0;
+        for (frame, decoded) in frames.iter().zip(Decoder::new(bytes).unwrap()) {
+            assert_eq!(frame.at_ms, previous_end);
+            previous_end = decoded.timestamp().max(0) as u32;
+        }
+        assert!(frames.len() > 1);
+        assert_eq!(frames[0].at_ms, 0);
+        assert_eq!(frames[1].at_ms, 33);
+    }
+}

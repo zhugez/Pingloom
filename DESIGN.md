@@ -1,10 +1,10 @@
 # Desktop UI design
 
 ## Scope
-One Tauri 2 local Settings WebView using Svelte 5/Vite/Tailwind/daisyUI and `@lucide/svelte`; keep native Win32 ping/emote overlay, hooks/replay, animation/audio and tray. No website, server, remote assets or WebView overlay. This supersedes the previous Rust-only/no-WebView restriction for Settings alone.
+One Tauri 2 local Settings WebView using Svelte 5/Vite/Tailwind/daisyUI and `@lucide/svelte`; keep native ping/emote overlays, hooks/replay, animation/audio and tray (Win32 retained; experimental GTK/X11 and Quartz/AppKit adapters). No website, server, remote assets or WebView overlay. This supersedes the previous Rust-only/no-WebView restriction for Settings alone.
 
 ## Desktop utility architecture
-Designed as a compact, authentic Windows desktop utility rather than a website, landing page, or SaaS dashboard.
+Designed as a compact, authentic desktop utility rather than a website, landing page, or SaaS dashboard.
 
 ### 1. App shell & header
 - **Fixed header & native desktop titlebar (46px)**: Compact desktop utility titlebar built frameless (`decorations(false)`) with Windows 11 Mica material vibrancy. Contains the Pingloom app badge, title (`Pingloom Settings`), active gesture status pill (`Gestures active` / `Paused`), integrated segmented tab bar (`Triggers`, `Tactical Pings`, `Emotes`), draggable titlebar regions (`data-tauri-drag-region` on branding and spacer, with double-click to toggle maximize), non-draggable navigation tabs (`data-no-drag`), and native desktop caption controls (Minimize, Maximize / Restore Down, and Close).
@@ -35,7 +35,9 @@ Designed as a compact, authentic Windows desktop utility rather than a website, 
   - Tab content enter: subtle bounded opacity/transform translation (140ms ease-out `translateY(2px)` to `0`).
   - Wheel slice node hover: snappy 100–120ms scale (1.08x) and blush glow (`box-shadow: 0 2px 6px rgba(226, 180, 189, 0.35)`).
   - Button depress: 80–100ms active depression (`scale(0.96)` for wheel nodes, `translateY(1px)` for command buttons).
-  - Accessibility: `prefers-reduced-motion: reduce` completely clamps animation durations to 0.01ms while preserving full element visibility, state, and focus outlines.
+  - Accessibility: `prefers-reduced-motion: reduce` disables panel entrances and decorative scales while retaining `translate(-50%, -50%)` for wheel positioning, visible state/focus feedback, and non-animated field reveal. Hidden Settings windows pause spinner animation without pausing the lifecycle heartbeat.
+  - Feedback uses explicit visual transition properties (120ms), not layout or font interpolation. Repeated tab navigation leaves one active panel; focused wheel nodes retain press feedback.
+  - Native motion: time-based wheel selection blending and a short opacity entrance do not change hit-testing or input timing. Ping/emote pop curves settle continuously at final size; all ping components fade together. Emote playback uses frame start times derived from WebP frame-end timestamps and begins when decoded frames arrive, without resetting on duplicate decode replies. Windows client-area animation preference suppresses decorative wheel/ping movement and uses static emotes. Native visual/runtime verification remains required.
 
 ### 3. Pages & controls
 - **Triggers**:

@@ -1,8 +1,11 @@
 [package]
 name = "pingloom"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 license = "MIT"
+description = "Native desktop ping and emote gestures"
+authors = ["Pingloom contributors"]
+repository = "https://github.com/zhugez/pingloom"
 
 [lib]
 name = "pingloom_core"
@@ -12,6 +15,11 @@ path = "src/lib.rs"
 name = "pingloom"
 path = "src/main.rs"
 
+[features]
+default = ["desktop", "custom-protocol"]
+desktop = ["dep:tauri", "dep:include_dir", "dep:image", "dep:rodio", "dep:webp-animation", "dep:base64", "dep:rdev", "dep:x11rb", "dep:gtk", "dep:core-graphics", "dep:core-foundation", "dep:objc2", "dep:objc2-foundation"]
+custom-protocol = ["tauri/custom-protocol"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
@@ -20,13 +28,25 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tempfile = "3"
 
+include_dir = { version = "0.7", optional = true }
+image = { version = "0.25", default-features = false, features = ["png"], optional = true }
+rodio = { version = "0.20", default-features = false, features = ["wav", "vorbis"], optional = true }
+webp-animation = { version = "0.10", features = ["static"], optional = true }
+tauri = { version = "2", features = ["tray-icon", "macos-private-api", "unstable"], optional = true }
+base64 = { version = "0.22", optional = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+rdev = { version = "0.5.3", features = ["unstable_grab"], optional = true }
+x11rb = { version = "0.13", optional = true }
+gtk = { version = "0.18", optional = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+core-graphics = { version = "0.25", optional = true }
+core-foundation = { version = "0.10", optional = true }
+objc2 = { version = "0.6", optional = true }
+objc2-foundation = { version = "0.3", features = ["NSData", "NSGeometry"], optional = true }
+
 [target.'cfg(windows)'.dependencies]
-include_dir = "0.7"
-image = { version = "0.25", default-features = false, features = ["png"] }
-rodio = { version = "0.20", default-features = false, features = ["wav", "vorbis"] }
-webp-animation = { version = "0.10", features = ["static"] }
-tauri = "2"
-base64 = "0.22"
 windows-sys = { version = "0.59", features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",

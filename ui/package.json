@@ -1,7 +1,7 @@
 {
   "name": "pingloom-settings",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -16,8 +16,9 @@
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.3.1",
-    "@types/node": "^22.19.11",
     "@tailwindcss/vite": "^4.3.3",
+    "@tauri-apps/cli": "2.12.2",
+    "@types/node": "^22.19.11",
     "daisyui": "^5.7.47",
     "svelte-check": "^4.7.6",
     "tailwindcss": "^4.3.3",
