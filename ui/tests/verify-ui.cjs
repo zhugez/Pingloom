@@ -347,8 +347,47 @@ function findChrome() {
       };
     });
     if (!warmTheme.separate || !warmTheme.theme || warmTheme.inputHeight < 34) {
-      throw new Error(`Warm Settings layout/theme regression: ${JSON.stringify(warmTheme)}`);
+      throw new Error(`Settings layout/theme regression: ${JSON.stringify(warmTheme)}`);
     }
+
+    // Theme is renderer-only: presets use canonical light/dark palettes, persist immediately, and never Save.
+    const themeAccessible = await page.$eval('#theme-preset', el => ({ label: el.labels[0]?.textContent, noDrag: el.closest('[data-no-drag]') !== null }));
+    const toggleAccessible = await page.$eval('.theme-toggle', el => ({ name: el.getAttribute('aria-label'), pressed: el.getAttribute('aria-pressed') }));
+    if (themeAccessible.label !== 'Color theme' || !themeAccessible.noDrag || !toggleAccessible.name?.includes('dark')) {
+      throw new Error(`Theme controls are not accessible/drag-safe: ${JSON.stringify({ themeAccessible, toggleAccessible })}`);
+    }
+    for (const [preset, mode, paper, accent] of [
+      ['latte', 'light', '#eff1f5', '#209fb5'], ['frappe', 'dark', '#303446', '#85c1dc'],
+      ['macchiato', 'dark', '#24273a', '#7dc4e4'], ['mocha', 'dark', '#1e1e2e', '#74c7ec'],
+    ]) {
+      await page.select('#theme-preset', preset);
+      const actual = await page.evaluate(() => ({ mode: document.documentElement.dataset.themeMode, palette: document.documentElement.dataset.themePalette, paper: getComputedStyle(document.documentElement).getPropertyValue('--paper').trim(), accent: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(), saved: window.__savedCandidate }));
+      if (actual.mode !== mode || actual.palette !== preset || actual.paper !== paper || actual.accent !== accent || actual.saved) {
+        throw new Error(`Theme preset did not resolve canonically: ${preset} ${JSON.stringify(actual)}`);
+      }
+      await capture(page, `theme-${preset}-960x720.png`);
+    }
+    await page.click('.theme-toggle');
+    if (await page.$eval('#theme-preset', el => el.value) !== 'latte') throw new Error('Dark Catppuccin mode did not toggle to Latte');
+    await page.click('.theme-toggle');
+    if (await page.$eval('#theme-preset', el => el.value) !== 'mocha') throw new Error('Latte did not restore remembered Mocha');
+    await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'light' }]);
+    if (await page.evaluate(() => document.documentElement.dataset.themeMode) !== 'dark') throw new Error('Explicit theme changed with OS preference');
+    await page.reload({ waitUntil: 'networkidle0' });
+    if (await page.$eval('#theme-preset', el => el.value) !== 'mocha') throw new Error('Theme preference did not survive reload');
+    await page.evaluate(() => localStorage.setItem('pingloom.ui-theme', '{bad json'));
+    await page.reload({ waitUntil: 'networkidle0' });
+    if (await page.$eval('#theme-preset', el => el.value) !== 'default') throw new Error('Malformed theme preference did not fall back to Default Sapphire');
+    await page.evaluateOnNewDocument(() => {
+      if (location.search.includes('storage-unavailable')) Object.defineProperty(window, 'localStorage', { configurable: true, get() { throw new Error('storage unavailable'); } });
+    });
+    await page.goto(`${url}?storage-unavailable`, { waitUntil: 'networkidle0' });
+    if (!await page.$('#theme-preset')) throw new Error('Unavailable localStorage prevented Settings UI from loading');
+    await page.goto(url, { waitUntil: 'networkidle0' });
+    await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'dark' }]);
+    await page.waitForFunction(() => document.documentElement.dataset.themeMode === 'dark');
+    await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'light' }]);
+    await page.waitForFunction(() => document.documentElement.dataset.themeMode === 'light');
 
     // Capture Triggers screenshot (960x720)
     await capture(page, '01-triggers-960x720.png');
@@ -652,15 +691,19 @@ function findChrome() {
     await page.evaluate(() => window.__resumeSave());
     await page.waitForSelector('.status-msg.success');
 
-    // 9. Test Window Chrome Close Button (calls close_settings, NOT destroy)
-    console.log('Testing Window Chrome Close button (generation-aware close_settings)...');
+    // 9. All Close paths retain the existing close_settings IPC semantics.
+    console.log('Testing Window Chrome, footer Close, and Escape...');
     await page.evaluate(() => { window.__closedCount = 0; });
     await page.click('.window-control-btn.btn-close');
-    const closedFromChrome = await page.evaluate(() => window.__closedCount);
-    console.log('Chrome close call count:', closedFromChrome);
-    if (closedFromChrome !== 1) {
-      throw new Error(`Expected close count 1 from titlebar close button, got ${closedFromChrome}`);
+    if (await page.evaluate(() => window.__closedCount) !== 1) throw new Error('Titlebar Close did not invoke close_settings exactly once');
+    const footerClose = await page.$eval('.btn-footer-ghost', el => ({ name: el.textContent.trim(), title: el.title, disabled: el.disabled }));
+    if (!footerClose.name.includes('Close') || !footerClose.name.includes('Esc') || !footerClose.title.includes('discard')) {
+      throw new Error(`Footer Close label/tooltip regression: ${JSON.stringify(footerClose)}`);
     }
+    await page.click('.btn-footer-ghost');
+    if (await page.evaluate(() => window.__closedCount) !== 2) throw new Error('Footer Close did not retain close_settings semantics');
+    await page.keyboard.press('Escape');
+    if (await page.evaluate(() => window.__closedCount) !== 3) throw new Error('Escape did not retain close_settings semantics');
 
     console.log('ALL BROWSER AUTOMATION TESTS PASSED SUCCESSFULLY!');
   } finally {
