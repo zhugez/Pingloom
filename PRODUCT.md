@@ -3,6 +3,9 @@
 ## Platform
 Windows 11 x64 desktop, with experimental Linux/X11 and macOS native backends. Native Rust owns latency-sensitive input, overlays, animation/audio and tray. Settings is one local Tauri 2 WebView (Svelte 5/Vite/Tailwind/daisyUI and `@lucide/svelte`), not a hosted app. Evergreen WebView2 is required; Node is build-time only.
 
+## Version policy
+Keep the app and consolidated prerelease at **0.1.0** until the user explicitly approves a version increase. Features and fixes refresh that prerelease; do not automatically bump Cargo, Tauri or frontend versions.
+
 ## Users and purpose
 People placing desktop pings and emotes independently of the game process. Settings should be understandable and accessible without adding latency or steps to gestures.
 
