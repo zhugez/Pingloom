@@ -300,6 +300,22 @@ function findChrome() {
       throw new Error(`Missing required gesture copy! Found: ${gestureCopy}`);
     }
 
+    // Preview contract: navigation is outside native drag chrome and theme is unified.
+    const warmTheme = await page.evaluate(() => {
+      const header = document.querySelector('.desktop-header').getBoundingClientRect();
+      const nav = document.querySelector('.nav-tabs-wrapper').getBoundingClientRect();
+      const root = getComputedStyle(document.documentElement);
+      const input = document.querySelector('#ping-size') || document.querySelector('select');
+      return {
+        separate: nav.top >= header.bottom && !document.querySelector('.desktop-header nav'),
+        theme: root.getPropertyValue('--color-primary').trim() === root.getPropertyValue('--accent').trim(),
+        inputHeight: input.getBoundingClientRect().height,
+      };
+    });
+    if (!warmTheme.separate || !warmTheme.theme || warmTheme.inputHeight < 34) {
+      throw new Error(`Warm Settings layout/theme regression: ${JSON.stringify(warmTheme)}`);
+    }
+
     // Capture Triggers screenshot (960x720)
     await page.screenshot({ path: path.join(SCREENSHOT_DIR, '01-triggers-960x720.png') });
     console.log('Saved 01-triggers-960x720.png');
