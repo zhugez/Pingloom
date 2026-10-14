@@ -62,11 +62,10 @@ impl EmoteFx {
             let elapsed = self.animation_started.map_or(0, |started| {
                 now.saturating_duration_since(started).as_millis() as u32
             });
-            if let Some(frame) = self
-                .frames
-                .as_ref()
-                .and_then(|frames| frames.iter().rev().find(|frame| frame.at_ms <= elapsed))
-            {
+            if let Some(frame) = self.frames.as_ref().and_then(|frames| {
+                let elapsed = crate::animation::playback_ms(&self.slug, frames, elapsed);
+                frames.iter().rev().find(|frame| frame.at_ms <= elapsed)
+            }) {
                 return &frame.image;
             }
         }
@@ -1023,10 +1022,12 @@ mod tests {
             frames: Some(vec![
                 AnimatedFrame {
                     at_ms: 0,
+                    end_ms: 100,
                     image: pixel(1),
                 },
                 AnimatedFrame {
                     at_ms: 100,
+                    end_ms: 200,
                     image: pixel(2),
                 },
             ]),
@@ -1055,6 +1056,28 @@ mod tests {
             2
         );
         assert_eq!(emote.image_at(now, true).get_pixel(0, 0).0[0], 9);
+        let custom = EmoteFx {
+            slug: "custom_0123456789abcdef".into(),
+            ..emote
+        };
+        assert_eq!(
+            custom
+                .image_at(now + Duration::from_millis(150), false)
+                .get_pixel(0, 0)[0],
+            2
+        );
+        assert_eq!(
+            custom
+                .image_at(now + Duration::from_millis(210), false)
+                .get_pixel(0, 0)[0],
+            1
+        );
+        assert_eq!(
+            custom
+                .image_at(now + Duration::from_millis(150), true)
+                .get_pixel(0, 0)[0],
+            9
+        );
     }
 
     #[test]

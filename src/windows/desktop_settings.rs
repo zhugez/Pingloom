@@ -255,7 +255,7 @@ pub(crate) async fn import_emote<R: Runtime>(
         request_id: None,
     };
     if data.len() > crate::custom_emotes::MAX_INPUT_BYTES.div_ceil(3) * 4 {
-        return Err(reject("Choose a PNG up to 8 MiB".into()));
+        return Err(reject("Choose a PNG, JPG, GIF or WebP up to 8 MiB".into()));
     }
     {
         let mut pending = state

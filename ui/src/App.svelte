@@ -302,7 +302,7 @@
     importing = true;
     importMessage = '';
     try {
-      if (file.size > 8 * 1024 * 1024) throw new Error('Choose a PNG up to 8 MiB.');
+      if (file.size > 8 * 1024 * 1024) throw new Error('Choose a PNG, JPG, GIF or WebP up to 8 MiB.');
       const data = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onerror = () => reject(new Error('Could not read this image.'));
@@ -970,8 +970,8 @@
                   </div>
                   <div class="card-body">
                     <label for="custom-emote-file" class="field-label">Import custom emote</label>
-                    <input id="custom-emote-file" type="file" accept="image/png,.png" class="file-input file-input-sm w-full" onchange={importEmote} disabled={importing || saving || !sessionAlive} aria-describedby="custom-emote-help custom-emote-message" />
-                    <p id="custom-emote-help" class="field-help">PNG only · up to 8 MiB / 2048×2048. Stored locally at up to 512px; 16 custom images. No custom animation or sound yet.</p>
+                    <input id="custom-emote-file" type="file" accept="image/png,image/jpeg,image/gif,image/webp,.png,.jpg,.jpeg,.gif,.webp" class="file-input file-input-sm w-full" onchange={importEmote} disabled={importing || saving || !sessionAlive} aria-describedby="custom-emote-help custom-emote-message" />
+                    <p id="custom-emote-help" class="field-help">PNG / JPG / GIF / WebP · up to 8 MiB / 2048px. GIF/WebP animate for 3s; reduced motion uses a still. Library: 16 images / 32 MiB. No custom sound yet.</p>
                     <p id="custom-emote-message" class="field-help" role="status">{importing ? 'Importing…' : importMessage}</p>
                     {@render AssetPicker('emote_wheel', catalog('emotes'), draft.emote_wheel)}
                     <details class="slot-details">

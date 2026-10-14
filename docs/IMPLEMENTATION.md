@@ -6,22 +6,29 @@ Native and frontend integration shares one checkout. Native platform CI builds t
 
 Tauri owns one local Settings WebView. A separate pumped Win32 owner thread retains `APPLICATION`, hooks, replay, gesture engine, native overlays, animation/audio and tray. Bounded owned requests are handled serially on that owner. Opening Settings acknowledges an owner-queue barrier without pausing gestures. Save validates, persists and applies on the owner, safely cancelling any active gesture. Close/watchdog destroy the window and await a queue barrier before admitting a new generation; they do not change input or manual pause state. The dormant native Settings source remains in-tree but is no longer the active tray route.
 
-The Tauri bridge is registered in `src/main.rs` and implemented in `src/windows/desktop_settings.rs`; mailbox and owner lifecycle live under `src/windows/`. Five commands expose boot/catalog, Save, close, heartbeat, and custom PNG import. Caller label plus local origin/path are checked. Candidate payload size/tree/keys/wheel lengths/enums/assets are restricted; canonical persistence/application remains native. UI resources are bundled from `ui/dist`. Capability is Settings-window scoped and only grants event listening; navigation and CSP constrain local content and embedded image previews.
+The Tauri bridge is registered in `src/main.rs` and implemented in `src/windows/desktop_settings.rs`; mailbox and owner lifecycle live under `src/windows/`. Five commands expose boot/catalog, Save, close, heartbeat, and custom image import. Caller label plus local origin/path are checked. Candidate payload size/tree/keys/wheel lengths/enums/assets are restricted; canonical persistence/application remains native. UI resources are bundled from `ui/dist`. Capability is Settings-window scoped and only grants event listening; navigation and CSP constrain local content and embedded image previews.
 
 ## Custom emotes and single instance
 
-`src/custom_emotes.rs` stores normalized static PNGs beside the canonical settings file.
+`src/custom_emotes.rs` stores local images beside the canonical settings file.
 The trusted `import_emote` command accepts bounded base64 image bytes, never a path.
-Rust limits PNG input to 8 MiB, 2048×2048 and bounded decode memory; premultiplied-alpha
-resampling caps stored dimensions at 512px. There are at most 16 library items, with
-path-safe `custom_<16 lowercase hex>` IDs. Imports are serialized, deduplicated and
+PNG/JPG are normalized to static PNGs; GIF/WebP retain their original validated bytes
+and compression. Format is detected from content, not the filename. Rust limits input
+to 8 MiB / 2048×2048. A shared decoder bounds animation to 300 frames, 30 seconds and
+128 MiB decoded pixels, inspecting dimensions before native WebP decoder creation.
+All frames are validated before persistence; an intact thumbnail is insufficient.
+Premultiplied-alpha resampling caps native frames at 512px. There are at most 16 library
+items / 32 MiB total, with path-safe `custom_<16 lowercase hex>` IDs. Imports are serialized, deduplicated and
 atomically persisted without replacing existing artwork. They add catalog entries;
 wheel/tap assignments remain drafts until the ordinary validated owner Save. Save
 rejects custom IDs absent from the library. Core schema remains version 1.
-Windows and Unix native renderers load library PNGs through the same bounded asset
-resolver; no filesystem plugin, remote asset URL or overlay WebView is introduced.
-Bundled WebP playback/audio remain unchanged; custom animation/audio and library
-management controls are not implemented.
+Windows and Unix native renderers share the decoder and timing helper. Custom GIF/WebP
+loop within the ordinary three-second emote lifetime; decode readiness starts the
+playback clock. GIF zero delay defaults to 100ms and sub-10ms delays clamp to 10ms.
+Reduced motion and picker thumbnails use a static first-frame PNG. Existing custom PNG
+IDs/files remain compatible, and bundled WebP does not adopt custom looping. No filesystem
+plugin, remote asset URL or overlay WebView is introduced. Custom audio and library
+management controls remain unimplemented.
 
 `src/single_instance.rs` uses `std::fs::File::try_lock` in the user settings directory
 before starting hooks/tray. Tauri retains the File for the runtime lifetime. The lock
