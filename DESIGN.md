@@ -46,7 +46,7 @@ Warm, quiet desktop utility: flat property groups rather than nested cards. Keep
 - Settings-only theme controls offer Default Sapphire and the official Catppuccin Latte, Frappé, Macchiato and Mocha palettes; this renderer preference is immediate and independent of native Settings Save.
 - DaisyUI default themes are disabled. Checkbox/range primitives share explicit shell tokens, avoiding stray blue/purple defaults.
 - Theme palettes provide their own dark surfaces and Sapphire accents; forced-colors and reduced-motion rules remain supported.
-- The ribbon-woven P logo appears in Settings, app icons and tray.
+- The ribbon-woven P is preserved but must remain legible across themes: Settings uses a cropped monochrome SVG alpha mask colored with `--ink`, not hard-coded charcoal/rose. Desktop icons use a fixed dark plate, white P/blush crossing and light perimeter; GitHub gets transparent light/dark wordmark PNGs selected through `<picture>`. Review small native sizes on light/dark backgrounds and require ≥4.5:1 Settings logo contrast in all six palettes.
 
 ## Layout and typography
 Separate 44px titlebar, 52px tab navigation, scrollable body and persistent 62px command footer. Window controls preserve native minimize/maximize and generation-aware close. Navigation is outside draggable titlebar regions.
@@ -68,6 +68,8 @@ At widths up to 760px the workspace becomes a single column; narrow windows use 
 
 ## Verification boundary
 `npm --prefix ui run check`, `npm --prefix ui test`, `npm --prefix ui run build` and `node ui/tests/verify-ui.cjs` cover frontend checks, settings logic, rendering, navigation, draft/save/cancel, validation focus, native-chrome command routing and reduced-motion behavior.
+
+`npm --prefix ui run preview:readme` builds the current UI, runs all browser checks including six-palette logo contrast, and copies the verified pages/theme captures into `docs/media/`. Refresh these whenever Settings or branding changes, before publication; README imagery is part of the feature, not a separate follow-up. Chromium/puppeteer-core are browser harness prerequisites. The release/native icon provenance remains separate from mocked UI evidence.
 
 Browser screenshots in `.impeccable/review/desktop-redesign/` render the real frontend with mocked desktop IPC. They are not physical desktop acceptance. Actual input, OS materials, permissions, DPI, tray rendering and audio still need platform smoke testing. Native compilation and CI packaging do not certify those behaviors.
 

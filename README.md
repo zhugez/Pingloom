@@ -1,8 +1,9 @@
-# Pingloom
-
-<p align="center">
-  <img src="docs/media/brand/pingloom-mark.svg" alt="Pingloom ribbon-woven P logo" width="120" />
-</p>
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/media/brand/pingloom-wordmark-dark.png" />
+    <img src="docs/media/brand/pingloom-wordmark-light.png" alt="Pingloom" width="360" />
+  </picture>
+</h1>
 
 <p align="center">
   <a href="https://learn.microsoft.com/en-us/windows/release-health/windows11-release-information"><img src="https://img.shields.io/badge/Platform-Windows%2011%20x64-0078D4?logo=windows11&logoColor=white" alt="Platform" /></a>
@@ -38,7 +39,7 @@ Native Rust owns latency-sensitive low-level keyboard/mouse hooks, input replay,
 - **Game-independent communication**: Summon tactical wheel pings (Danger, On My Way, Assist Me, Need Vision, etc.) and animated emotes on supported desktop sessions.
 - **Zero game hooking**: Operates entirely outside game processes via native OS input APIs; no game-process injection.
 - **Native execution architecture**: All gesture recognition, wheel hit-testing, and transparent overlay drawing run directly in compiled native Rust (architectural design, not an empirical latency benchmark).
-- **Warm, focused Settings**: Warm-white/blush surfaces, rose accents and charcoal text; separate titlebar and navigation, flat property groups, readable 36px controls, dark mode and responsive layouts. The ribbon-woven P identity carries through app icons, tray and Settings. See [design details](DESIGN.md).
+- **Theme-aware Settings**: Default Sapphire light/dark and Catppuccin Latte, Frappé, Macchiato and Mocha. Separate titlebar/navigation, flat property groups, readable 36px controls and responsive layouts. The ribbon-woven P uses the theme foreground in Settings; desktop icons use a fixed high-contrast plate. See [design details](DESIGN.md).
 
 ---
 
@@ -71,9 +72,11 @@ The Settings window provides complete customization across three focused pages:
 
 > **Note on custom titlebar:** Custom HTML window caption buttons inside WebView2 cannot natively trigger the Windows 11 DWM Snap Layout flyout on hover without Win32 `WM_NCHITTEST` non-client message interception on the top-level HWND.
 
-### UI Previews — current warm rose design
+### Current UI — Sapphire and Catppuccin
 
-Select a slice on the dark eight-wedge wheel, then choose an image from the visual catalog alongside it. Full dropdown assignments remain under **All 8 assignments**. Display controls sit below the wheel; audio follows the workspace. Checkboxes and sliders share the same rose theme rather than default daisyUI colors.
+Use the **Color theme** selector in the titlebar and the adjacent light/dark toggle. Default Sapphire follows the OS until you choose explicitly; Catppuccin offers **Latte / Frappé / Macchiato / Mocha** and remembers your dark flavor. Appearance is saved locally immediately, independently of gesture configuration Save.
+
+Select a wheel slice, then choose an image from the visual catalog alongside it. Full dropdown assignments remain under **All 8 assignments**. Emotes includes custom PNG/JPG/GIF/WebP import. Display/audio controls and artwork remain available in every palette.
 
 The three-platform `v0.1.0` release also includes shared native ping motion, baked WebP playback without a duplicate animation envelope, and premultiplied-alpha artwork sampling for cleaner edges. These changes preserve gesture timing and settings compatibility.
 
@@ -83,9 +86,25 @@ The three-platform `v0.1.0` release also includes shared native ping motion, bak
   <img src="docs/media/pingloom-pings-preview.png" alt="Pingloom Settings: dark radial wheel and visual ping catalog" width="960" />
 </p>
 <p align="center">
-  <img src="docs/media/pingloom-triggers-preview.png" alt="Warm rose Triggers and Shortcuts Settings" width="470" />
-  <img src="docs/media/pingloom-emotes-preview.png" alt="Warm rose Emotes Settings" width="470" />
+  <img src="docs/media/pingloom-triggers-preview.png" alt="Current Sapphire Triggers Settings with theme selector" width="470" />
+  <img src="docs/media/pingloom-emotes-preview.png" alt="Current Emotes Settings with custom image and animation import" width="470" />
 </p>
+
+#### All supported palettes
+
+<p align="center">
+  <img src="docs/media/pingloom-sapphire-dark-preview.png" alt="Default Sapphire — dark" width="440" />
+  <img src="docs/media/pingloom-latte-preview.png" alt="Catppuccin Latte — light" width="440" />
+</p>
+<p align="center">
+  <img src="docs/media/pingloom-frappe-preview.png" alt="Catppuccin Frappé" width="440" />
+  <img src="docs/media/pingloom-macchiato-preview.png" alt="Catppuccin Macchiato" width="440" />
+</p>
+<p align="center">
+  <img src="docs/media/pingloom-mocha-preview.png" alt="Catppuccin Mocha" width="880" />
+</p>
+
+**Maintaining these previews:** with Chromium and `puppeteer-core` available (the browser harness prerequisites), run `npm --prefix ui run preview:readme`. It builds the current UI, runs the browser checks including logo contrast in all six palettes, and refreshes every README screenshot only after the checks pass. Settings/branding changes are not ready to ship until these previews are refreshed with the same build.
 
 ---
 

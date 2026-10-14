@@ -314,6 +314,8 @@ input[type="number"] { width: 130px; }
   .modifiers-group { flex-wrap: wrap; }
 }
 @media (forced-colors: active) {
+  .app-badge { background: Canvas; }
+  .brand-symbol { background: CanvasText; forced-color-adjust: none; }
   .tab-btn.active, .wheel-node.focused, .btn-footer-primary, .theme-toggle { border: 2px solid Highlight; }
   .wheel-node.duplicate { border: 2px dashed Highlight; }
   .radial-wedge { fill: Canvas; stroke: CanvasText; }
