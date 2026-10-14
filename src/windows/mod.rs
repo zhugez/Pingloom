@@ -637,20 +637,21 @@ impl App {
     unsafe fn spawn_emote(&mut self, slug: &str, point: Point, size: u16) {
         if let Some(slug) = self.overlay.spawn_emote(slug, point, size) {
             let hwnd = self.hwnd as usize;
-            let slug = slug.clone();
-            std::thread::Builder::new()
+            let decoding_slug = slug.clone();
+            let worker = std::thread::Builder::new()
                 .name("pingloom-emote-decode".into())
                 .spawn(move || {
                     let hwnd = hwnd as HWND;
-                    let Some(frames) = overlay::decode_emote(&slug) else {
-                        return;
-                    };
-                    let raw = Box::into_raw(Box::new((slug, frames)));
+                    // An empty completion releases the pending state into its still fallback.
+                    let frames = overlay::decode_emote(&decoding_slug).unwrap_or_default();
+                    let raw = Box::into_raw(Box::new((decoding_slug, frames)));
                     if PostMessageW(hwnd, WM_FRAMES, 0, raw as LPARAM) == 0 {
                         drop(Box::from_raw(raw));
                     }
-                })
-                .ok();
+                });
+            if worker.is_err() {
+                self.overlay.set_emote_frames(slug.as_str(), Vec::new());
+            }
         }
     }
 

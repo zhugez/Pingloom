@@ -11,6 +11,14 @@ pub(crate) struct AnimatedFrame {
     pub image: RgbaImage,
 }
 
+pub(crate) fn has_animation(slug: &str) -> bool {
+    if pingloom_core::settings::is_custom_emote(slug) {
+        crate::custom_emotes::animated(slug)
+    } else {
+        ASSETS.get_file(format!("emotes/{slug}.webp")).is_some()
+    }
+}
+
 pub(crate) fn decode_emote(slug: &str) -> Option<Vec<AnimatedFrame>> {
     if pingloom_core::settings::is_custom_emote(slug) {
         let (bytes, _) = crate::custom_emotes::media(slug)?;

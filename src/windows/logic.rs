@@ -116,8 +116,12 @@ pub fn effect_pop(age: f64, enter_seconds: f64) -> f64 {
 
 /// Bundled WebP already contains its entrance, movement and exit (Pingloom's sheet).
 /// Only a still fallback needs an external envelope; reduced motion uses that still.
-pub fn emote_envelope(age: f64, baked: bool, reduced: bool) -> (f64, f64) {
-    if baked && !reduced {
+pub fn emote_envelope(age: f64, baked: bool, reduced: bool, pending: bool) -> (f64, f64) {
+    if pending && !reduced {
+        // Static PNG thumbnails can use a different canvas/crop from WebP frames.
+        // Never display them before decode readiness: that creates a false zoom.
+        (1.0, 0.0)
+    } else if baked && !reduced {
         (1.0, 1.0)
     } else {
         (
@@ -630,13 +634,38 @@ mod tests {
     }
 
     #[test]
+    fn pending_animation_never_flashes_a_differently_sized_still() {
+        for age in [0.0, 0.1, 0.25, 0.8, 2.5] {
+            assert_eq!(
+                emote_envelope(age, false, false, true),
+                (1.0, 0.0),
+                "PNG fallback must stay hidden until animated frames are ready"
+            );
+        }
+        assert_eq!(
+            emote_envelope(0.0, true, false, false),
+            (1.0, 1.0),
+            "decode-ready animation must retain its own scale/motion"
+        );
+        assert_eq!(
+            emote_envelope(0.0, false, true, true),
+            (1.0, 1.0),
+            "reduced motion may immediately use its still"
+        );
+        assert!(
+            emote_envelope(0.1, false, false, false).1 > 0.0,
+            "static images and failed decode must keep their fallback"
+        );
+    }
+
+    #[test]
     fn pingloom_motion_preserves_baked_animation_and_shared_ping_geometry() {
         for age in [0.0, 0.1, 0.25, 1.4, 2.9] {
-            assert_eq!(emote_envelope(age, true, false), (1.0, 1.0));
+            assert_eq!(emote_envelope(age, true, false, false), (1.0, 1.0));
             assert_eq!(ping_art_motion(age, 0, 2, true), (0.0, 0.0, 1.0, 1.0));
-            assert_eq!(emote_envelope(age, true, true).0, 1.0);
+            assert_eq!(emote_envelope(age, true, true, false).0, 1.0);
         }
-        assert_eq!(emote_envelope(3.0, false, false).1, 0.0);
+        assert_eq!(emote_envelope(3.0, false, false, false).1, 0.0);
         let left = ping_art_motion(0.1, 0, 2, false);
         let right = ping_art_motion(0.1, 1, 2, false);
         assert_eq!(left.0, -right.0);

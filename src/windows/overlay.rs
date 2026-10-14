@@ -54,9 +54,17 @@ struct EmoteFx {
     still: RgbaImage,
     frames: Option<Vec<AnimatedFrame>>,
     animation_started: Option<Instant>,
+    animation_pending: bool,
 }
 
 impl EmoteFx {
+    fn complete_decode(&mut self, frames: Vec<AnimatedFrame>, ready: Instant) {
+        self.animation_pending = false;
+        self.started = ready;
+        self.frames = Some(frames);
+        self.animation_started = Some(ready);
+    }
+
     fn image_at(&self, now: Instant, reduced_motion: bool) -> &RgbaImage {
         if !reduced_motion {
             let elapsed = self.animation_started.map_or(0, |started| {
@@ -400,6 +408,7 @@ impl Overlay {
             .as_deref()
             .or_else(|| ASSETS.get_file(&path).map(|file| file.contents()))?;
         let still = image::load_from_memory(bytes).ok()?.into_rgba8();
+        let pending = !self.reduced_motion && crate::animation::has_animation(slug);
         self.emote = Some(EmoteFx {
             slug: slug.to_owned(),
             point,
@@ -408,15 +417,15 @@ impl Overlay {
             still,
             frames: None,
             animation_started: None,
+            animation_pending: pending,
         });
-        (!self.reduced_motion).then(|| slug.to_owned())
+        pending.then(|| slug.to_owned())
     }
 
     pub fn set_emote_frames(&mut self, slug: &str, frames: Vec<AnimatedFrame>) {
         if let Some(emote) = &mut self.emote {
             if emote.slug == slug && emote.frames.is_none() {
-                emote.frames = Some(frames);
-                emote.animation_started = Some(Instant::now());
+                emote.complete_decode(frames, Instant::now());
             }
         }
     }
@@ -963,7 +972,10 @@ impl Canvas<'_> {
             .frames
             .as_ref()
             .is_some_and(|frames| !frames.is_empty());
-        let (pop, fade) = emote_envelope(age, baked, reduced_motion);
+        let (pop, fade) = emote_envelope(age, baked, reduced_motion, emote.animation_pending);
+        if fade <= 0.0 {
+            return;
+        }
         let draw_size = (size * 1.25 * pop) as u32;
         self.image(
             image,
@@ -1010,6 +1022,54 @@ mod tests {
     use super::*;
 
     #[test]
+    fn completion_never_flashes_thumbnail_and_starts_a_fresh_lifetime() {
+        let start = Instant::now();
+        let pixel = |value| RgbaImage::from_pixel(1, 1, image::Rgba([value, 0, 0, 255]));
+        let mut emote = EmoteFx {
+            slug: "facepalm".into(),
+            point: Point::new(0, 0),
+            size: 150,
+            started: start,
+            still: pixel(9),
+            frames: None,
+            animation_started: None,
+            animation_pending: true,
+        };
+        assert_eq!(
+            emote_envelope(0.5, false, false, emote.animation_pending).1,
+            0.0
+        );
+        let ready = start + Duration::from_millis(500);
+        emote.complete_decode(
+            vec![AnimatedFrame {
+                at_ms: 0,
+                end_ms: 100,
+                image: pixel(1),
+            }],
+            ready,
+        );
+        assert!(!emote.animation_pending);
+        assert_eq!(emote.started, ready);
+        assert_eq!(emote.animation_started, Some(ready));
+        assert_eq!(emote.image_at(ready, false).get_pixel(0, 0)[0], 1);
+        assert_eq!(
+            emote_envelope(0.0, true, false, emote.animation_pending),
+            (1.0, 1.0)
+        );
+        // Failed or static-only decoding must also leave pending and show the still safely.
+        emote.complete_decode(Vec::new(), ready + Duration::from_millis(100));
+        assert!(!emote.animation_pending);
+        assert_eq!(
+            emote
+                .image_at(ready + Duration::from_millis(100), false)
+                .get_pixel(0, 0)[0],
+            9
+        );
+        assert!(emote_envelope(0.1, false, false, emote.animation_pending).1 > 0.0);
+        assert_eq!(emote.image_at(ready, true).get_pixel(0, 0)[0], 9);
+    }
+
+    #[test]
     fn playback_uses_decode_ready_clock_and_stills_for_reduced_motion() {
         let now = Instant::now();
         let pixel = |value| RgbaImage::from_pixel(1, 1, image::Rgba([value, 0, 0, 255]));
@@ -1032,6 +1092,7 @@ mod tests {
                 },
             ]),
             animation_started: Some(now),
+            animation_pending: false,
         };
         assert_eq!(emote.image_at(now, false).get_pixel(0, 0).0[0], 1);
         assert_eq!(
