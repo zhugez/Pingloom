@@ -3,6 +3,41 @@
 ## Scope and ownership
 One bundled Tauri 2 Settings WebView using Svelte 5, Tailwind and daisyUI with Lucide icons. Native Rust retains gestures, overlays, replay, audio and tray. Windows is the original backend; Linux/X11 and macOS remain experimental. No production server or remote UI assets.
 
+## Pingloom interaction/motion preview (local, awaiting approval)
+Reference: Pingloom `f24a51e5a11c2b31dab72d89a571cc4025ad3c98`,
+`WheelEditor.tsx`, `overlay/wheel.ts`, `overlay/overlay.css`, and `emoteFx.ts`.
+This preview adapts its visual catalog interaction and motion semantics, not its
+Electron runtime, multiplayer, custom imports, or complete feature set.
+
+- Choose a wheel slice, then an illustrated catalog tile; keyboard activation is
+  supported. Full dropdown assignments remain in an expandable section, and
+  validation opens that section before focusing its field.
+- Dark radial preview and native wheel surfaces make the wheel distinct from the
+  warm Settings shell; rose highlights preserve Pingloom identity.
+- Short panel entrances, selected-icon emphasis and keyed assignment feedback;
+  reduced motion removes decorative movement.
+- Native Windows/Unix ping art shares diagonal two-layer convergence, stable
+  positioning during pop, entrance alpha and gentle bob. Ring edges use analytical
+  coverage rather than hard/double-stamped pixels.
+- Bundled animated WebP plays its baked motion without a second pop/fade envelope;
+  still fallbacks and reduced-motion rendering retain their bounded fade.
+- Native artwork uses a shared premultiplied-alpha cubic resampler. This avoids
+  dark fringes from filtering straight RGBA on Unix and nearest-neighbor stair
+  steps on Windows; same-size images bypass resampling. Regression tests cover
+  transparent-black and hidden-color edges.
+- Settings avoids whole-panel translation and stacked hover/selection scales.
+  Selected artwork resolves to an integer 44px size. Review captures wait for
+  fonts and finite animations, assert settled panel state, and include a 2x
+  device-scale PNG. Native motion review uses lossless APNG rather than relying
+  on GIF's quantized palette. These checks do not certify native mixed-DPI behavior.
+- Gesture timing, hit testing, schema, permissions and version are unchanged.
+
+Browser evidence: `node ui/tests/verify-ui.cjs` (mock IPC). Native raster evidence:
+`PINGLOOM_MOTION_PREVIEW_DIR=/tmp/pingloom-native-motion cargo test --bin pingloom native_motion_frames_are_visible_then_expire`.
+The latter exports deterministic frames from the Unix rasterizer, not an OS screen
+recording; Windows visual acceptance still requires hardware. This preview is not
+in the published release until explicitly shipped.
+
 ## Approved visual direction
 Warm, quiet desktop utility: flat property groups rather than nested cards. Keep Plus Jakarta Sans locally bundled with Vietnamese, Latin/extended and Cyrillic-extended coverage and OFL attribution.
 

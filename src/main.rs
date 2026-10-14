@@ -8,6 +8,8 @@ mod animation;
 #[cfg(feature = "desktop")]
 #[path = "windows/assets.rs"]
 mod assets;
+#[cfg(feature = "desktop")]
+mod raster;
 
 #[cfg(any(feature = "desktop", test))]
 #[path = "windows/settings_lifecycle.rs"]

@@ -82,7 +82,9 @@ input, textarea { caret-color: var(--accent); }
 .tab-btn.active { color: var(--ink); border-bottom-color: var(--accent); font-weight: 700; }
 .tab-btn:hover { color: var(--accent); }
 .desktop-body { overflow: auto; padding: 26px 28px 32px; }
-.page-panel { max-width: 1040px; margin: auto; }
+.page-panel { max-width: 1040px; margin: auto; animation: panel-arrive 180ms cubic-bezier(.16, 1, .3, 1); }
+/* Never translate a whole text panel onto fractional pixels during navigation. */
+@keyframes panel-arrive { from { opacity: .85; } to { opacity: 1; } }
 .page-panel:focus { outline: none; }
 .panel-header { margin-bottom: 24px; }
 .panel-header h1 { margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -.035em; line-height: 1.3; }
@@ -144,25 +146,44 @@ input[type="number"] { width: 130px; }
 .radial-wheel-box { display: flex; justify-content: center; padding: 4px 0; }
 .radial-wheel { position: relative; width: 280px; height: 280px; flex-shrink: 0; }
 .radial-svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-.radial-outer-boundary, .radial-inner-boundary { fill: none; stroke: var(--line); stroke-width: 1; }
-.radial-wedge { fill: var(--surface); stroke: var(--paper); stroke-width: 2; transition: fill 120ms ease; }
-.radial-wedge.wedge-focused { fill: var(--rose); stroke: var(--accent); }
+.radial-outer-boundary, .radial-inner-boundary { fill: none; stroke: #b89a9f; stroke-width: 1; }
+.radial-wedge { fill: url(#wheel-surface); stroke: #756369; stroke-width: 1; transition: fill 100ms ease-out, stroke 100ms ease-out; }
+.radial-wedge.wedge-focused { fill: #8f747f; stroke: #f7d6d0; stroke-width: 2; }
 .radial-wedge.wedge-duplicate { fill: var(--warning-bg); stroke: var(--warning); }
-.wheel-center-zone { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; justify-content: center; width: 82px; height: 82px; border-radius: 50%; background: var(--paper); pointer-events: none; }
-.center-tag { font-size: 11px; font-weight: 700; color: var(--accent); }
-.center-sub { font-size: 9px; color: var(--muted); }
+.wheel-center-zone { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; justify-content: center; width: 98px; height: 98px; border: 2px solid #e2b4bd; border-radius: 50%; background: #25282e; pointer-events: none; }
+.center-tag { font-size: 11px; font-weight: 700; color: #f7d6d0; }
+.center-sub { font-size: 9px; color: #d1c4c6; }
 .wheel-node { position: absolute; transform: translate(-50%, -50%); width: 60px; height: 60px; padding: 2px; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 3px; border: 1px solid transparent; border-radius: 50%; background: transparent; z-index: 2; transition: transform 120ms ease, background-color 120ms ease; }
-.wheel-node:hover { background: var(--peach); transform: translate(-50%, -50%) scale(1.08); }
+.wheel-node:hover { background: #ffffff18; }
 .wheel-node:active, .wheel-node.focused:active { transform: translate(-50%, -50%) scale(.96); }
-.wheel-node.focused, .wheel-node:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.wheel-node.focused, .wheel-node:focus-visible { outline: 2px solid #f7d6d0; outline-offset: 1px; }
 .wheel-node.duplicate { border: 1px dashed var(--warning); }
 .node-art-wrap { position: relative; display: grid; place-items: center; width: 40px; height: 40px; }
-.node-img { width: 38px; height: 38px; object-fit: contain; }
+.node-img { width: 38px; height: 38px; max-width: none; object-fit: contain; animation: asset-arrive 180ms cubic-bezier(.16, 1, .3, 1); }
+/* Resolve emphasis at an integer size instead of stacking two scale transforms. */
+.wheel-node.focused .node-img { width: 44px; height: 44px; }
+@keyframes asset-arrive { from { opacity: .4; transform: scale(.8); } to { opacity: 1; transform: scale(1); } }
 .node-fallback { color: var(--muted); font-size: 12px; }
-.node-dir-badge { position: absolute; top: -8px; right: -7px; font-size: 9px; color: var(--muted); font-weight: 600; }
+.node-dir-badge { position: absolute; top: -8px; right: -7px; font-size: 9px; color: #fff5f5; font-weight: 600; }
 /* Names remain in the accessible button name and the matching editor row. */
 .node-name-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 .node-duplicate-pill { font-size: 9px; color: var(--warning); background: var(--warning-bg); border-radius: 3px; padding: 0 3px; }
+.assignment-heading { display: flex; align-items: center; gap: 12px; margin: 0 0 16px; }
+.assignment-direction { display: grid; place-items: center; width: 38px; height: 38px; flex-shrink: 0; background: var(--rose); color: #4a4a4a; border-radius: 50%; font-size: 12px; font-weight: 750; }
+.assignment-heading strong { font-size: 14px; }
+.assignment-heading p { margin: 3px 0 0; font-size: 11px; color: var(--muted); }
+.asset-library { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; max-height: 340px; overflow-y: auto; padding: 4px; }
+.asset-tile { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; min-height: 88px; padding: 10px 5px; background: var(--paper); border: 1px solid var(--line); border-radius: 8px; transition: background-color 120ms ease, border-color 120ms ease; }
+.asset-tile img { width: 40px; height: 40px; object-fit: contain; transition: transform 140ms cubic-bezier(.16, 1, .3, 1); }
+.asset-tile span { font-size: 10px; line-height: 1.35; text-align: center; overflow-wrap: anywhere; }
+.asset-tile:hover { background: var(--surface); border-color: var(--accent); }
+.asset-tile:hover img { transform: translateY(-2px); }
+.asset-tile:active img { transform: scale(.96); }
+.asset-tile.assigned { background: var(--surface); border-color: var(--accent); }
+.asset-check { position: absolute; right: 5px; top: 5px; color: var(--accent); }
+.slot-details { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 12px; }
+.slot-details summary { cursor: pointer; font-size: 12px; color: var(--muted); padding: 4px 0; }
+.slot-details[open] summary { margin-bottom: 10px; }
 .slots-table { display: flex; flex-direction: column; }
 .slot-row { display: flex; align-items: center; gap: 10px; min-height: 49px; padding: 6px 0; border-bottom: 1px solid var(--line); border-radius: 2px; }
 .slot-row:last-child { border-bottom-color: transparent; }
@@ -230,6 +251,7 @@ input[type="number"] { width: 130px; }
   .tab-btn { font-size: 12px; gap: 6px; }
   .desktop-body { padding: 20px 16px; }
   .panel-header h1 { font-size: 22px; }
+  .asset-library { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .grid-2col, .tap-actions-grid, .column-controls > .config-card:nth-child(3) .card-body { grid-template-columns: 1fr; }
   .desktop-footer { padding: 0 12px; gap: 8px; }
   .footer-actions { gap: 4px; }
@@ -238,8 +260,6 @@ input[type="number"] { width: 130px; }
 }
 @media (prefers-color-scheme: dark) {
   :root { color-scheme: dark; --paper: #242020; --surface: #31292b; --line: #4d4143; --input-line: #8d797c; --ink: #f7eeeb; --muted: #c5b5b3; --accent: #e2b4bd; --error: #ff9c9e; --warning: #efc381; --warning-bg: #403222; --success: #9bc7ae; }
-  .radial-wedge.wedge-focused { fill: #62414b; }
-  .wheel-node:hover { background: #62414b; }
 }
 @media (forced-colors: active) {
   .tab-btn.active, .wheel-node.focused, .btn-footer-primary { border: 2px solid Highlight; }
@@ -251,5 +271,6 @@ input[type="number"] { width: 130px; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
   .wheel-node, .wheel-node:hover, .wheel-node:active, .wheel-node.focused:active { transform: translate(-50%, -50%); }
-  .btn-footer-primary:active, .btn-footer-ghost:active { transform: none; }
+  .btn-footer-primary:active, .btn-footer-ghost:active, .asset-tile:hover img, .asset-tile:active img { transform: none; }
+  .wheel-node.focused .node-img { width: 38px; height: 38px; }
 }
