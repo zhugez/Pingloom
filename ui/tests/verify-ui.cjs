@@ -64,10 +64,14 @@ const PING_ITEMS = [
   { id: 'visioncleared', name: 'Vision Cleared', file: 'textures/vision_cleared.png' },
 ];
 
-const EMOTE_SLUGS = [
-  'facepalm', 'unworthy', 'unworthy_cn', 'poro_snax', 'sad_kitten', 'cheeky_poro',
-  'angry_kitty', 'gg_heart', 'bee_happy', 'bee_mad', 'bee_sad', 'snoozy_poro'
-];
+// Keep preview catalog/default assignments aligned with canonical Rust identities.
+const modelSource = fs.readFileSync(path.resolve(__dirname, '../../src/model.rs'), 'utf8');
+function modelStrings(name) {
+  const block = modelSource.match(new RegExp(`pub const ${name}[^=]*=\\s*&?\\[([\\s\\S]*?)\\];`));
+  if (!block) throw new Error(`Missing canonical model constant: ${name}`);
+  return [...block[1].matchAll(/"([^"]+)"/g)].map(match => match[1]);
+}
+const EMOTE_SLUGS = modelStrings('EMOTE_ASSETS');
 
 const catalog = {
   pings: PING_ITEMS.map(p => ({
@@ -101,7 +105,7 @@ const initialSettings = {
   tick_sound: true,
   emote_click: false,
   click_emote_id: 'gg_heart',
-  emote_wheel: ['unworthy_cn', 'poro_snax', 'sad_kitten', 'cheeky_poro', 'angry_kitty', 'gg_heart', 'bee_happy', 'bee_mad'],
+  emote_wheel: modelStrings('DEFAULT_EMOTE_WHEEL'),
   emote_size_px: 160,
   emote_sound: true,
 };
@@ -138,6 +142,18 @@ function startServer() {
       resolve({ server, port: server.address().port });
     });
   });
+}
+
+async function checkBrand(page) {
+  const brand = await page.$eval('.brand-symbol', el => {
+    const style = getComputedStyle(el), plate = getComputedStyle(el.closest('.app-badge'));
+    return { ink: style.backgroundColor, paper: plate.backgroundColor, mask: style.maskImage || style.webkitMaskImage, width: el.getBoundingClientRect().width };
+  });
+  const luminance = color => color.match(/\d+/g).slice(0, 3).map(n => Number(n) / 255).map(v => v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4).reduce((sum, v, i) => sum + v * [.2126, .7152, .0722][i], 0);
+  const a = luminance(brand.ink), b = luminance(brand.paper);
+  const contrast = (Math.max(a, b) + .05) / (Math.min(a, b) + .05);
+  if (contrast < 4.5 || !(brand.mask.includes('.svg') || brand.mask.includes('image/svg+xml')) || brand.width < 20) throw new Error(`Brand contrast/mask regression: ${JSON.stringify({ ...brand, contrast })}`);
+  console.log('Brand contrast:', contrast.toFixed(2));
 }
 
 function findChrome() {
@@ -356,6 +372,15 @@ function findChrome() {
     if (themeAccessible.label !== 'Color theme' || !themeAccessible.noDrag || !toggleAccessible.name?.includes('dark')) {
       throw new Error(`Theme controls are not accessible/drag-safe: ${JSON.stringify({ themeAccessible, toggleAccessible })}`);
     }
+    await checkBrand(page);
+    await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'dark' }]);
+    await page.waitForFunction(() => document.documentElement.dataset.themeMode === 'dark');
+    await checkBrand(page);
+    await page.click('#tab-pings');
+    await capture(page, 'theme-sapphire-dark-960x720.png');
+    await page.click('#tab-triggers');
+    await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'light' }]);
+    await page.waitForFunction(() => document.documentElement.dataset.themeMode === 'light');
     for (const [preset, mode, paper, accent] of [
       ['latte', 'light', '#eff1f5', '#209fb5'], ['frappe', 'dark', '#303446', '#85c1dc'],
       ['macchiato', 'dark', '#24273a', '#7dc4e4'], ['mocha', 'dark', '#1e1e2e', '#74c7ec'],
@@ -365,7 +390,10 @@ function findChrome() {
       if (actual.mode !== mode || actual.palette !== preset || actual.paper !== paper || actual.accent !== accent || actual.saved) {
         throw new Error(`Theme preset did not resolve canonically: ${preset} ${JSON.stringify(actual)}`);
       }
+      await checkBrand(page);
+      await page.click('#tab-pings');
       await capture(page, `theme-${preset}-960x720.png`);
+      await page.click('#tab-triggers');
     }
     await page.click('.theme-toggle');
     if (await page.$eval('#theme-preset', el => el.value) !== 'latte') throw new Error('Dark Catppuccin mode did not toggle to Latte');
@@ -705,6 +733,17 @@ function findChrome() {
     await page.keyboard.press('Escape');
     if (await page.evaluate(() => window.__closedCount) !== 3) throw new Error('Escape did not retain close_settings semantics');
 
+    if (process.argv.includes('--refresh-readme')) {
+      const previews = {
+        '01-triggers-960x720.png': 'pingloom-triggers-preview.png',
+        '02-pings-960x720.png': 'pingloom-pings-preview.png',
+        '03-emotes-960x720.png': 'pingloom-emotes-preview.png',
+        'theme-sapphire-dark-960x720.png': 'pingloom-sapphire-dark-preview.png',
+        ...Object.fromEntries(['latte', 'frappe', 'macchiato', 'mocha'].map(name => [`theme-${name}-960x720.png`, `pingloom-${name}-preview.png`])),
+      };
+      for (const [captureName, readmeName] of Object.entries(previews)) fs.copyFileSync(path.join(SCREENSHOT_DIR, captureName), path.resolve(__dirname, '../../docs/media', readmeName));
+      console.log('Refreshed all README screenshots from the verified current UI.');
+    }
     console.log('ALL BROWSER AUTOMATION TESTS PASSED SUCCESSFULLY!');
   } finally {
     await browser.close();

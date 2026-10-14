@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "check": "svelte-check --tsconfig ./tsconfig.json",
+    "preview:readme": "npm run build && node tests/verify-ui.cjs --refresh-readme",
     "test": "tsx --test src/lib/settings.test.ts"
   },
   "dependencies": {
