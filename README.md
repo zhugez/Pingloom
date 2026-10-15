@@ -37,6 +37,7 @@ Native Rust owns latency-sensitive low-level keyboard/mouse hooks, input replay,
 - **Game-independent communication**: Summon tactical wheel pings (Danger, On My Way, Assist Me, Need Vision, etc.) and animated emotes on supported desktop sessions.
 - **Zero game hooking**: Operates entirely outside game processes via native OS input APIs; no game-process injection.
 - **Native execution architecture**: All gesture recognition, wheel hit-testing, and transparent overlay drawing run directly in compiled native Rust (architectural design, not an empirical latency benchmark).
+- **Native V7 Wheel**: Spaced Night wedges, a separate cancellation hub, Blush selection arcs and compass ticks/labels on the actual desktop overlay. Input behavior and Ping/Emote artwork stay unchanged. The native Wheel stays Night; Settings themes affect Settings only.
 - **Theme-aware Settings**: Pingloom Blush light/dark and Catppuccin Latte, Frappé, Macchiato and Mocha. Floating titlebar/navigation, double-bezel surfaces, a local drag-test wheel, persistent Save controls and responsive layouts. The ribbon-woven P uses the theme foreground in Settings; desktop icons use a fixed high-contrast plate. See [design details](DESIGN.md).
 
 ---
@@ -79,6 +80,10 @@ Select a wheel slice, then choose an image from the visual catalog alongside it.
 <p align="center">
   <img src="docs/media/pingloom-preview.png" alt="Pingloom Settings: Catppuccin Mocha theme with radial wheel and visual catalog" width="960" />
 </p>
+
+Native V7 Wheel (offscreen native renderer on a test background, not an OS screenshot):
+
+![Native V7 Ping and Emote Wheels](docs/media/pingloom-native-wheel-v7.png)
 
 ---
 

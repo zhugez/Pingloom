@@ -14,6 +14,8 @@ mod custom_emotes;
 mod raster;
 #[cfg(any(feature = "desktop", test))]
 mod single_instance;
+#[cfg(feature = "desktop")]
+mod wheel;
 
 #[cfg(any(feature = "desktop", test))]
 #[path = "windows/settings_lifecycle.rs"]

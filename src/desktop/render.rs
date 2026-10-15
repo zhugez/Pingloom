@@ -2,13 +2,10 @@ use super::{audio::Audio, QueuedAction};
 use crate::{
     animation::{decode_emote, AnimatedFrame},
     assets::ASSETS,
-    logic::{
-        effect_fade, emote_envelope, ping_art_motion, ring_coverage, selection_blend,
-        wheel_boundary_angle_degrees, wheel_surface,
-    },
+    logic::{effect_fade, emote_envelope, ping_art_motion, ring_coverage, selection_blend},
 };
 use image::{imageops, Pixel, Rgba, RgbaImage};
-use pingloom_core::{geometry::pick_slice, Action, Point, Settings, WheelKind};
+use pingloom_core::{Action, Point, Settings, WheelKind};
 use std::{
     collections::HashMap,
     sync::{
@@ -30,6 +27,8 @@ struct Wheel {
     blend: [f64; 8],
     updated: Instant,
     scale: f64,
+    labels: Option<RgbaImage>,
+    surface: crate::wheel::Surface,
 }
 struct Ping {
     id: pingloom_core::PingId,
@@ -94,6 +93,8 @@ impl Renderer {
                     blend: [0.0; 8],
                     updated: Instant::now(),
                     scale: queued.scale,
+                    labels: crate::wheel::labels(queued.scale),
+                    surface: crate::wheel::Surface::new(queued.scale),
                 });
                 None
             }
@@ -193,7 +194,7 @@ impl Renderer {
         }
         let mut areas = Vec::new();
         if let Some(w) = &self.wheel {
-            areas.push((w.origin, (230.0 * w.scale).ceil() as i32));
+            areas.push((w.origin, (crate::wheel::EXTENT * w.scale).ceil() as i32 + 1));
         }
         for p in &self.pings {
             areas.push((p.point, settings.ping_size_px as i32 * 2));
@@ -228,77 +229,30 @@ impl Renderer {
                     selection_blend(*blend, wheel.hot == Some(slot), dt)
                 };
             }
-            let radius = (220.0 * wheel.scale).ceil() as i32;
-            for dy in -radius..=radius {
-                for dx in -radius..=radius {
-                    let distance = (dx as f64).hypot(dy as f64);
-                    let color = if distance <= 84.0 * wheel.scale {
-                        Some([34, 38, 45, 245])
-                    } else if distance <= 220.0 * wheel.scale {
-                        let slot = pick_slice(dx as f64, dy as f64, 0.0).unwrap();
-                        let blend = wheel.blend[slot];
-                        Some(wheel_surface(
-                            (distance / wheel.scale - 84.0) / 136.0,
-                            blend,
-                        ))
-                    } else {
-                        None
-                    };
-                    if let Some(color) = color {
-                        point(
-                            &mut image,
-                            wheel.origin.x - left + dx,
-                            wheel.origin.y - top + dy,
-                            color,
-                        );
-                    }
-                }
-            }
-            for boundary in 0..8 {
-                let angle = wheel_boundary_angle_degrees(boundary).to_radians();
-                for radius in (84.0 * wheel.scale) as i32..=(220.0 * wheel.scale) as i32 {
-                    point(
-                        &mut image,
-                        wheel.origin.x - left + (angle.cos() * radius as f64) as i32,
-                        wheel.origin.y - top + (angle.sin() * radius as f64) as i32,
-                        [184, 154, 159, 180],
-                    );
-                }
-            }
-            ring(
-                &mut image,
-                wheel.origin.x - left,
-                wheel.origin.y - top,
-                86.0 * wheel.scale,
-                [226, 180, 189, 255],
-            );
-            ring(
-                &mut image,
-                wheel.origin.x - left,
-                wheel.origin.y - top,
-                220.0 * wheel.scale,
-                [222, 226, 232, 255],
-            );
-            for i in -10..=10 {
+            wheel.surface.paint(&wheel.blend, |dx, dy, rgba| {
                 point(
                     &mut image,
-                    wheel.origin.x - left + i,
-                    wheel.origin.y - top + i,
-                    [226, 180, 189, 255],
+                    wheel.origin.x - left + dx,
+                    wheel.origin.y - top + dy,
+                    rgba,
                 );
-                point(
-                    &mut image,
-                    wheel.origin.x - left - i,
-                    wheel.origin.y - top + i,
-                    [226, 180, 189, 255],
-                );
-            }
+            });
         }
         if let Some(wheel) = &self.wheel {
             let kind = wheel.kind;
             let scale = wheel.scale;
             let origin = wheel.origin;
             let blends = wheel.blend;
+            if let Some(labels) = &wheel.labels {
+                blit(
+                    &mut image,
+                    labels,
+                    origin.x - left,
+                    origin.y - top,
+                    (crate::wheel::EXTENT * 2.0 * scale).round() as u32,
+                    1.0,
+                );
+            }
             for (slot, blend) in blends.into_iter().enumerate() {
                 let angle = (slot as f64 * 45.0 - 90.0).to_radians();
                 let path = match kind {
@@ -311,10 +265,10 @@ impl Renderer {
                     blit(
                         &mut image,
                         &art,
-                        origin.x - left + (angle.cos() * 153.0 * scale) as i32,
-                        origin.y - top + (angle.sin() * 153.0 * scale) as i32,
+                        origin.x - left + (angle.cos() * crate::wheel::ICON_RADIUS * scale) as i32,
+                        origin.y - top + (angle.sin() * crate::wheel::ICON_RADIUS * scale) as i32,
                         (46.0 * scale * (1.0 + 0.18 * blend)) as u32,
-                        1.0,
+                        0.72 + 0.28 * blend,
                     );
                 }
             }
@@ -493,6 +447,8 @@ mod tests {
             blend: [0.0; 8],
             updated: start,
             scale: 0.65,
+            labels: crate::wheel::labels(0.65),
+            surface: crate::wheel::Surface::new(0.65),
         });
         renderer.pings.push(Ping {
             id: pingloom_core::PingId::AllIn,
@@ -638,6 +594,69 @@ mod tests {
     }
 
     #[test]
+    fn native_v7_wheel_preview_at_display_scales() {
+        let settings = Settings::default();
+        let start = Instant::now();
+        let export = std::env::var_os("PINGLOOM_WHEEL_PREVIEW_DIR").map(std::path::PathBuf::from);
+        if let Some(dir) = &export {
+            std::fs::create_dir_all(dir).unwrap();
+        }
+        for scale in [1.0, 1.5, 2.0] {
+            for (kind, name) in [(WheelKind::Ping, "pings"), (WheelKind::Emote, "emotes")] {
+                let mut renderer = Renderer::new();
+                renderer.reduced = true;
+                renderer.wheel = Some(Wheel {
+                    kind,
+                    origin: Point::new(0, 0),
+                    hot: Some(0),
+                    blend: [0.0; 8],
+                    updated: start,
+                    scale,
+                    labels: crate::wheel::labels(scale),
+                    surface: crate::wheel::Surface::new(scale),
+                });
+                let clock = Instant::now();
+                let frame = renderer.frame_at(&settings, start).unwrap();
+                eprintln!("V7 {name} scale {scale}: {:?}", clock.elapsed());
+                let x = -frame.x;
+                let y = -frame.y;
+                assert_eq!(
+                    frame
+                        .image
+                        .get_pixel(x as u32, (y - (94.0_f64 * scale).round() as i32) as u32)[3],
+                    0
+                );
+                assert_eq!(
+                    &frame
+                        .image
+                        .get_pixel(x as u32, (y - (216.5_f64 * scale).round() as i32) as u32)
+                        .0[..3],
+                    &[226, 180, 189]
+                );
+                assert_eq!(
+                    frame
+                        .image
+                        .get_pixel(
+                            (x + (30.0_f64 * scale).round() as i32) as u32,
+                            (y + (40.0_f64 * scale).round() as i32) as u32
+                        )
+                        .0,
+                    [26, 23, 27, 250]
+                );
+                assert!(renderer.wheel.as_ref().unwrap().labels.is_some());
+                if let Some(dir) = &export {
+                    frame
+                        .image
+                        .save(dir.join(format!("{name}-{scale}.png")))
+                        .unwrap();
+                }
+                renderer.cancel();
+                assert!(renderer.frame_at(&settings, start).is_none());
+            }
+        }
+    }
+
+    #[test]
     fn native_wheel_renders_visible_transparent_pixels_and_cancels() {
         let settings = Settings::default();
         let audio = Audio::new();
@@ -655,8 +674,8 @@ mod tests {
             &audio,
         );
         let frame = renderer.frame(&settings).unwrap();
-        assert_eq!(frame.x, -330);
-        assert_eq!(frame.y, -30);
+        assert_eq!(frame.x, -331);
+        assert_eq!(frame.y, -31);
         assert!(frame.image.pixels().any(|p| p.0[3] > 0));
         assert_eq!(frame.image.get_pixel(0, 0).0[3], 0);
         renderer.action(
