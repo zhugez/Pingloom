@@ -15,7 +15,9 @@ No overlay is a WebView. No Node process or remote server runs in production.
 
 ## Windows
 
-Run `pingloom.exe`; open Settings from the tray. The executable is unsigned.
+Run `Pingloom_0.1.0_x64-setup.exe` (per-user install with Start menu shortcut and
+uninstaller) or the portable `pingloom.exe`; open Settings from the tray. Both are
+unsigned, so SmartScreen may ask for confirmation.
 The legacy `%APPDATA%\Pingloom\settings.json` path remains unchanged.
 Mica is Windows-only. Snap Layout hover on the HTML maximize button remains unsupported.
 
@@ -63,12 +65,15 @@ Settings: `$XDG_CONFIG_HOME/pingloom/settings.json`, normally `~/.config/pingloo
 Extract the ZIP and move `Pingloom.app` into `/Applications`. The CI bundle is ad-hoc
 signed, **not Developer ID signed or notarized**; Gatekeeper may require explicit
 approval in System Settings → Privacy & Security. Do not disable Gatekeeper globally.
-The archive filename records the CI machine architecture (`arm64` or `x86_64`); this is
-not a universal binary.
+The app is universal (Apple Silicon and Intel). It lives in the menu bar only: no Dock
+icon.
 
-Grant Pingloom **Accessibility** and **Input Monitoring** in System Settings → Privacy &
-Security, then quit and reopen it. Without permissions, gestures remain paused and
-Settings displays the reason. The app never grants itself permissions.
+On first launch macOS asks for **Accessibility**; enable Pingloom in System Settings →
+Privacy & Security → Accessibility and gestures start automatically, no restart. If
+macOS also lists Pingloom under **Input Monitoring**, enable it there too. Until access
+is granted, gestures remain paused and Settings displays the reason. The app never grants
+itself permissions. After replacing the ad-hoc signed app with a newer build, remove and
+re-add Pingloom in Accessibility because macOS ties the grant to the signature.
 
 ```sh
 open /Applications/Pingloom.app --args --settings

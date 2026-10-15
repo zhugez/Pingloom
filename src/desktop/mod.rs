@@ -112,6 +112,23 @@ impl Shared {
         let decision = state.engine.set_enabled(false);
         self.decision(&mut state, decision);
     }
+    /// Mirrors the Windows watchdog: forget keys the OS reports released. After lost events,
+    /// also apply the pause/resume boundary so a half-seen gesture cannot linger.
+    #[cfg(target_os = "macos")]
+    fn resync(&self, lost_events: bool, is_down: impl FnMut(u8) -> bool) {
+        let Ok(mut state) = self.state.lock() else {
+            return;
+        };
+        if lost_events {
+            let enabled = state.engine.enabled();
+            let decision = state.engine.set_enabled(false);
+            self.decision(&mut state, decision);
+            if enabled && !self.overflow.load(Ordering::Acquire) {
+                let _ = state.engine.set_enabled(true);
+            }
+        }
+        state.engine.resync_key_states(is_down);
+    }
     fn scale_at(&self, point: Point) -> f64 {
         if cfg!(target_os = "macos") {
             return 1.0;
@@ -141,6 +158,9 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mailbox_setup = Arc::clone(&mailbox);
     let app = desktop_settings::install(tauri::Builder::default(), desktop)
         .setup(move |app| {
+            // Menu-bar utility: no Dock icon or app switcher entry.
+            #[cfg(target_os = "macos")]
+            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
             let path = app.path().config_dir()?.join("pingloom").join("settings.json");
             app.manage(crate::single_instance::acquire(path.parent().ok_or("settings directory unavailable")?)?);
             crate::custom_emotes::initialize(&path);

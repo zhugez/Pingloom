@@ -873,6 +873,9 @@ pub(crate) fn schedule_open(app: AppHandle, state: Arc<DesktopSettingsState>) {
                         }
                         _ => {}
                     });
+                    // A menu-bar (Accessory) app is not activated by creating a window.
+                    #[cfg(target_os = "macos")]
+                    let _ = built_window.set_focus();
                     let exists = app_main.get_webview_window("settings").is_some();
                     let opened = exists
                         && state_main

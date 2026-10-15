@@ -42,6 +42,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
+          # macOS ships one universal (Apple Silicon + Intel) app.
+          targets: ${{ matrix.platform == 'macos' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@v2
         with:
@@ -61,21 +63,23 @@ jobs:
           cargo test --locked --doc
       - name: Native-target Clippy
         run: cargo clippy --locked --all-targets -- -D warnings
-      - name: Windows portable executable
+      - name: Windows installer and portable executable
         if: matrix.platform == 'windows'
-        run: cargo build --locked --release --bin pingloom
+        shell: bash
+        run: ui/node_modules/.bin/tauri build --bundles nsis -- --locked
       - name: Linux package
         if: matrix.platform == 'linux'
         run: ui/node_modules/.bin/tauri build --bundles deb -- --locked
-      - name: macOS application bundle
+      - name: macOS universal application bundle
         if: matrix.platform == 'macos'
-        run: ui/node_modules/.bin/tauri build --bundles app -- --locked
+        run: ui/node_modules/.bin/tauri build --target universal-apple-darwin --bundles app -- --locked
       - name: Stage Windows
         if: matrix.platform == 'windows'
         shell: bash
         run: |
           mkdir release
           cp target/release/pingloom.exe release/
+          cp target/release/bundle/nsis/*-setup.exe release/
       - name: Stage Linux
         if: matrix.platform == 'linux'
         run: |
@@ -86,8 +90,10 @@ jobs:
         if: matrix.platform == 'macos'
         run: |
           mkdir release
-          codesign --force --deep --sign - target/release/bundle/macos/Pingloom.app
-          ditto -c -k --sequesterRsrc --keepParent target/release/bundle/macos/Pingloom.app "release/pingloom-macos-$(uname -m).zip"
+          app=target/universal-apple-darwin/release/bundle/macos/Pingloom.app
+          codesign --force --deep --sign - "$app"
+          lipo -verify_arch arm64 x86_64 "$app/Contents/MacOS/pingloom"
+          ditto -c -k --sequesterRsrc --keepParent "$app" release/pingloom-macos-universal.zip
       - name: Release decode benchmark
         shell: bash
         run: PINGLOOM_BENCH_OUT=bench.json cargo nextest run --locked --release --run-ignored only -E 'test(decode_benchmark)'
@@ -95,6 +101,7 @@ jobs:
         shell: bash
         run: |
           binary=target/release/pingloom
+          if [ "$RUNNER_OS" = macOS ]; then binary=target/universal-apple-darwin/release/pingloom; fi
           if [ "$RUNNER_OS" = Windows ]; then binary=$binary.exe; py=python; else py=python3; fi
           $py tools/perf_gate.py ${{ matrix.platform }} "$binary" bench.json "release/perf-${{ matrix.platform }}.json"
       - name: Record build provenance

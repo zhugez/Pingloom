@@ -2,9 +2,12 @@ use super::Shared;
 use core_foundation::{
     array::CFArrayGetValueAtIndex,
     base::TCFType,
-    dictionary::{CFDictionaryGetValue, CFDictionaryRef},
+    boolean::CFBoolean,
+    dictionary::{CFDictionary, CFDictionaryGetValue, CFDictionaryRef},
+    mach_port::CFMachPortRef,
     number::{kCFNumberSInt64Type, CFNumberGetValue, CFNumberRef},
-    runloop::{kCFRunLoopDefaultMode, CFRunLoop},
+    runloop::{kCFRunLoopCommonModes, kCFRunLoopDefaultMode, CFRunLoop},
+    string::CFString,
 };
 use core_graphics::{
     display::CGDisplay,
@@ -18,10 +21,16 @@ use core_graphics::{
 use pingloom_core::gesture::ReplayInput;
 use pingloom_core::{Button, InputEvent, Point};
 use std::{
-    sync::{atomic::Ordering, Arc},
+    sync::{
+        atomic::{AtomicPtr, Ordering},
+        Arc,
+    },
     time::Duration,
 };
 const MARKER: i64 = 0x50494e474c4f4f4d;
+const PERMISSION: &str = "Allow Pingloom in System Settings → Privacy & Security → Accessibility. Gestures start automatically once access is granted.";
+/// The live tap, so its own callback can re-enable it after a macOS timeout.
+static TAP: AtomicPtr<std::ffi::c_void> = AtomicPtr::new(std::ptr::null_mut());
 const KEYS: &[(u8, u16)] = &[
     (0x41, 0),
     (0x53, 1),
@@ -126,10 +135,25 @@ fn vk(code: u16) -> u8 {
 unsafe extern "C" {
     fn CGEventSourceKeyState(state_id: i32, keycode: u16) -> bool;
     fn AXIsProcessTrusted() -> bool;
+    fn AXIsProcessTrustedWithOptions(options: CFDictionaryRef) -> bool;
+    fn CGEventTapEnable(tap: CFMachPortRef, enable: bool);
     fn CGRectMakeWithDictionaryRepresentation(
         dictionary: CFDictionaryRef,
         rect: *mut CGRect,
     ) -> bool;
+}
+/// Asking with `prompt` lists Pingloom in Accessibility and offers to open System Settings.
+fn trusted(prompt: bool) -> bool {
+    let options = CFDictionary::from_CFType_pairs(&[(
+        CFString::from_static_string("AXTrustedCheckOptionPrompt").as_CFType(),
+        CFBoolean::from(prompt).as_CFType(),
+    )]);
+    unsafe { AXIsProcessTrustedWithOptions(options.as_concrete_TypeRef()) }
+}
+fn key_down(vk: u8) -> bool {
+    code(vk).is_some_and(|code| unsafe {
+        CGEventSourceKeyState(CGEventSourceStateID::HIDSystemState as i32, code)
+    })
 }
 fn button(kind: CGEventType, event: &CGEvent) -> Option<(Button, bool)> {
     match kind {
@@ -216,8 +240,19 @@ fn fullscreen_at(point: Point) -> bool {
     false
 }
 pub(super) fn run(shared: Arc<Shared>) -> Result<(), String> {
-    if !unsafe { AXIsProcessTrusted() } {
-        return Err("Grant Pingloom Accessibility and Input Monitoring in System Settings, then quit and reopen the app.".into());
+    if !trusted(true) {
+        shared.fail(PERMISSION.into());
+        // ponytail: 1 s poll; macOS reports the grant live, so no relaunch is needed.
+        while !trusted(false) {
+            if !shared.running.load(Ordering::Acquire) {
+                return Ok(());
+            }
+            std::thread::sleep(Duration::from_secs(1));
+        }
+        let mut state = shared.state.lock().unwrap();
+        if state.warning.as_deref() == Some(PERMISSION) {
+            state.warning = None;
+        }
     }
     let settings = shared.state.lock().unwrap().engine.settings().clone();
     super::validate(&settings).map_err(|e| e.message)?;
@@ -237,8 +272,14 @@ pub(super) fn run(shared: Arc<Shared>) -> Result<(), String> {
         CGEventType::OtherMouseUp,
     ];
     let callback = Arc::clone(&shared);
-    CGEventTap::with_enabled(CGEventTapLocation::HID,CGEventTapPlacement::HeadInsertEventTap,CGEventTapOptions::Default,events,move |_proxy,kind,event|{
-        if matches!(kind,CGEventType::TapDisabledByTimeout|CGEventType::TapDisabledByUserInput){callback.fail("macOS disabled the input event tap. Gestures paused; restart Pingloom after checking Accessibility/Input Monitoring.".into());return CallbackResult::Keep;}
+    let tap = CGEventTap::new(CGEventTapLocation::HID,CGEventTapPlacement::HeadInsertEventTap,CGEventTapOptions::Default,events,move |_proxy,kind,event|{
+        if matches!(kind,CGEventType::TapDisabledByTimeout){
+            // A slow callback made macOS disable the tap; events it missed may include key-ups.
+            unsafe{CGEventTapEnable(TAP.load(Ordering::Acquire).cast(),true)};
+            callback.resync(true,key_down);
+            return CallbackResult::Keep;
+        }
+        if matches!(kind,CGEventType::TapDisabledByUserInput){callback.fail("macOS disabled the input event tap. Gestures paused; restart Pingloom after checking Accessibility/Input Monitoring.".into());return CallbackResult::Keep;}
         if event.get_integer_value_field(EventField::EVENT_SOURCE_USER_DATA)==MARKER || event.get_integer_value_field(EventField::EVENT_SOURCE_UNIX_PROCESS_ID)>0{return CallbackResult::Keep;}
         let location=event.location();let point=Point::new(location.x.round() as i32,location.y.round() as i32);let time_ms=callback.time_ms();
         let native=match kind{
@@ -249,13 +290,30 @@ pub(super) fn run(shared: Arc<Shared>) -> Result<(), String> {
                 Some(if unsafe{CGEventSourceKeyState(CGEventSourceStateID::HIDSystemState as i32,code)}{InputEvent::KeyDown{vk:vk(code),injected:false}}else{InputEvent::KeyUp{vk:vk(code),injected:false}})
             }
             CGEventType::MouseMoved|CGEventType::LeftMouseDragged|CGEventType::RightMouseDragged|CGEventType::OtherMouseDragged=>Some(InputEvent::PointerMove{point,time_ms,injected:false}),
-            _=>button(kind,event).map(|(button,down)|if down{InputEvent::PointerDown{button,point,time_ms,injected:false,fullscreen_app:fullscreen_at(point),dpi_scale:callback.scale_at(point)}}else{InputEvent::PointerUp{button,point,time_ms,injected:false}}),
+            _=>button(kind,event).map(|(button,down)|if down{callback.resync(false,key_down);InputEvent::PointerDown{button,point,time_ms,injected:false,fullscreen_app:fullscreen_at(point),dpi_scale:callback.scale_at(point)}}else{InputEvent::PointerUp{button,point,time_ms,injected:false}}),
         };
         if native.is_some_and(|native|callback.input(native)){CallbackResult::Drop}else{CallbackResult::Keep}
-    },||{
-        shared.ready();
-        while shared.running.load(Ordering::Acquire){CFRunLoop::run_in_mode(unsafe{kCFRunLoopDefaultMode},Duration::from_millis(100),true);}
-    }).map_err(|_|"Allow Pingloom in System Settings → Privacy & Security → Accessibility and Input Monitoring, then quit and reopen the app. Native gestures are paused until permissions are available.".into())
+    }).map_err(|_|"Allow Pingloom in System Settings → Privacy & Security → Accessibility and Input Monitoring, then quit and reopen the app. Native gestures are paused until permissions are available.".to_string())?;
+    let source = tap
+        .mach_port()
+        .create_runloop_source(0)
+        .map_err(|_| "Could not attach the macOS input event tap.".to_string())?;
+    CFRunLoop::get_current().add_source(&source, unsafe { kCFRunLoopCommonModes });
+    TAP.store(
+        tap.mach_port().as_concrete_TypeRef().cast(),
+        Ordering::Release,
+    );
+    tap.enable();
+    shared.ready();
+    while shared.running.load(Ordering::Acquire) {
+        CFRunLoop::run_in_mode(
+            unsafe { kCFRunLoopDefaultMode },
+            Duration::from_millis(100),
+            true,
+        );
+    }
+    TAP.store(std::ptr::null_mut(), Ordering::Release);
+    Ok(())
 }
 pub(super) fn replay(input: ReplayInput) -> Result<(), ()> {
     if !unsafe { AXIsProcessTrusted() } {
