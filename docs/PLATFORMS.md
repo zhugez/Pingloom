@@ -1,5 +1,7 @@
 # Desktop platforms — experimental prerelease
 
+Public builds are available for Windows and experimental macOS. **Linux: Coming soon** — Linux release CI and downloadable packages are temporarily paused; its source backend remains for development.
+
 Settings uses the same bundled Svelte/Tauri interface on every OS. Gestures, input replay,
 wheel hit-testing, overlays, WebP decoding and audio remain native Rust. Linux/macOS
 are real backends, not executables that print “Windows only”. CI compilation/tests do
@@ -8,7 +10,7 @@ are real backends, not executables that print “Windows only”. CI compilation
 | Platform | Native input | Native overlay | Requirements |
 | --- | --- | --- | --- |
 | Windows x64 | Existing Win32 low-level hooks and SendInput | Existing layered Win32 renderer | Windows 11, Evergreen WebView2 |
-| Linux x64 | evdev/uinput grab; XTest replay; X11 cursor/EWMH queries | Transparent GTK/Cairo native window | Compositing X11 session, input-device permissions, tray support |
+| Linux — Coming soon | Source-only evdev/uinput + XTest backend | Native GTK/Cairo | Public builds paused; development needs compositing X11, input permissions and tray support |
 | macOS | Quartz event tap; tagged CGEvent replay | Native AppKit NSImageView window | Accessibility + Input Monitoring; app bundle installed locally |
 
 No overlay is a WebView. No Node process or remote server runs in production.
@@ -21,17 +23,17 @@ unsigned, so SmartScreen may ask for confirmation.
 The legacy `%APPDATA%\Pingloom\settings.json` path remains unchanged.
 Mica is Windows-only. Snap Layout hover on the HTML maximize button remains unsupported.
 
-## Linux
+## Linux — Coming soon (source development only)
 
-The `.deb` and `.tar.gz` are built on Ubuntu 24.04 x64. The tarball is **not** a
-self-contained AppImage; install the GTK3, WebKitGTK 4.1, AppIndicator, X11/XTest and
-ALSA runtime libraries for your distribution. The Debian package declares dependencies.
+Public `.deb` and `.tar.gz` downloads are temporarily withdrawn, and Linux release CI is disabled. The backend is retained, not deleted. The instructions below are for developers building from source on Ubuntu 24.04-compatible systems; they are not a supported public release.
+
+Install the GTK3, WebKitGTK 4.1, AppIndicator, X11/XTest and ALSA runtime libraries for your distribution.
 GNOME needs an AppIndicator/KStatusNotifierItem extension for a usable tray menu.
 
-Launch the installed binary, or extract the tarball and run:
+After building from source, run:
 
 ```sh
-./pingloom --settings
+./target/release/pingloom --settings
 ```
 
 `--settings` also provides access without a visible tray icon. Settings remains usable

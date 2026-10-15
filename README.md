@@ -5,7 +5,7 @@
 
 <p align="center">
   <a href="https://learn.microsoft.com/en-us/windows/release-health/windows11-release-information"><img src="https://img.shields.io/badge/Platform-Windows%2011%20x64-0078D4?logo=windows11&logoColor=white" alt="Platform" /></a>
-  <a href="docs/PLATFORMS.md"><img src="https://img.shields.io/badge/Linux-X11%20experimental-FCC624?logo=linux&logoColor=black" alt="Linux X11 experimental" /></a>
+  <a href="docs/PLATFORMS.md"><img src="https://img.shields.io/badge/Linux-Coming%20soon-FCC624?logo=linux&logoColor=black" alt="Linux coming soon" /></a>
   <a href="docs/PLATFORMS.md"><img src="https://img.shields.io/badge/macOS-experimental-444444?logo=apple&logoColor=white" alt="macOS experimental" /></a>
   <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/Rust-2021%20Edition-black?logo=rust&logoColor=white" alt="Rust" /></a>
   <a href="https://v2.tauri.app/"><img src="https://img.shields.io/badge/Tauri-v2-24C8DB?logo=tauri&logoColor=white" alt="Tauri 2" /></a>
@@ -14,7 +14,7 @@
   <a href="https://github.com/zhugez/pingloom/issues"><img src="https://img.shields.io/badge/Issues-zhugez%2Fpingloom-informational?logo=github" alt="Issue Tracker" /></a>
 </p>
 
-Pingloom places League of Legends tactical pings and animated emotes on your desktop through quick radial gestures, independent of the game client. Windows keeps its existing backend; Linux/X11 and macOS backends are experimental. See [platform requirements and permissions](docs/PLATFORMS.md).
+Pingloom places League of Legends tactical pings and animated emotes on your desktop through quick radial gestures, independent of the game client. Available for Windows, with an experimental macOS backend. **Linux: Coming soon** — public builds are temporarily paused. See [platform requirements and permissions](docs/PLATFORMS.md).
 
 Native Rust owns latency-sensitive low-level keyboard/mouse hooks, input replay, gesture state machine, transparent layered overlays, animated WebP playback, audio effects, and notification tray icon. Settings is a single bundled local Tauri 2 WebView built with Svelte 5, Vite, daisyUI, `@lucide/svelte`, and local SIL OFL variable Plus Jakarta Sans typography. Overlays and hooks are native: Win32 on Windows, evdev/X11 + GTK/Cairo on Linux, and Quartz + AppKit on macOS—not WebViews. Pingloom is not a website, hosted service, SaaS dashboard, or production Node application.
 
@@ -25,7 +25,7 @@ Native Rust owns latency-sensitive low-level keyboard/mouse hooks, input replay,
 | Platform | Download | Requirements |
 | --- | --- | --- |
 | Windows 11 x64 | [Installer](https://github.com/zhugez/pingloom/releases/download/v0.1.0/Pingloom_0.1.0_x64-setup.exe) · [portable exe](https://github.com/zhugez/pingloom/releases/download/v0.1.0/pingloom.exe) | Evergreen WebView2; unsigned |
-| Linux x64 | [DEB](https://github.com/zhugez/pingloom/releases/download/v0.1.0/Pingloom_0.1.0_amd64.deb) · [tar.gz](https://github.com/zhugez/pingloom/releases/download/v0.1.0/pingloom-linux-x64.tar.gz) | Ubuntu 24.04-compatible dependencies, compositing X11 and input-device permissions; experimental |
+| Linux | **Coming soon** | Public builds and downloads temporarily paused; source backend retained |
 | macOS (Apple Silicon + Intel) | [App ZIP](https://github.com/zhugez/pingloom/releases/download/v0.1.0/pingloom-macos-universal.zip) | Accessibility; ad-hoc signed, not notarized; experimental |
 
 [Release notes, build provenance and SHA-256 checksums](https://github.com/zhugez/pingloom/releases/tag/v0.1.0).
@@ -102,7 +102,7 @@ Legacy settings storage path and schema are preserved for backwards compatibilit
 
 ### Prerequisites
 
-- **Target OS**: Windows 11 x64; experimental Linux x64/X11 and macOS (universal). [Unix build/runtime prerequisites](docs/PLATFORMS.md).
+- **Target OS**: Windows 11 x64 and experimental macOS (universal). **Linux: Coming soon**; source-only development remains available. [Build/runtime prerequisites](docs/PLATFORMS.md).
 - **Windows Runtime Prerequisite**: Microsoft **Evergreen WebView2 Runtime** (preinstalled on Windows 11; required for the Settings WebView).
 - **Build Tools**:
   - Rust stable (`x86_64-pc-windows-msvc` toolchain).
@@ -134,7 +134,9 @@ Legacy settings storage path and schema are preserved for backwards compatibilit
    .\target\x86_64-pc-windows-msvc\release\pingloom.exe
    ```
 
-### Native Linux/macOS
+### Native macOS / Linux source development
+
+Linux is **Coming soon**: no public Linux packages or release CI are currently offered. The source backend remains for development.
 
 Build the frontend as above, then run `cargo build --locked --release --bin pingloom` on the target OS. Launch `target/release/pingloom --settings` to open Settings without a tray click. macOS releases use an app bundle; Linux needs explicit input-device access. [Full instructions and unverified acceptance checklist](docs/PLATFORMS.md).
 
