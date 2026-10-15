@@ -118,6 +118,10 @@ jobs:
           Start-Sleep 2
           if ($p.HasExited) { throw "pingloom exited with code $($p.ExitCode)" }
           Stop-Process -Id $p.Id
+      - name: Windows gesture smoke test
+        if: matrix.platform == 'windows'
+        shell: powershell
+        run: tools/windows_gesture_smoke.ps1 -Exe target/release/pingloom.exe -Dir $env:RUNNER_TEMP -TopMost
       - name: macOS runtime smoke test (both architectures)
         if: matrix.platform == 'macos'
         run: |
