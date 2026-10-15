@@ -92,7 +92,7 @@ jobs:
           mkdir release
           app=target/universal-apple-darwin/release/bundle/macos/Pingloom.app
           codesign --force --deep --sign - "$app"
-          lipo -verify_arch arm64 x86_64 "$app/Contents/MacOS/pingloom"
+          lipo "$app/Contents/MacOS/pingloom" -verify_arch arm64 x86_64
           ditto -c -k --sequesterRsrc --keepParent "$app" release/pingloom-macos-universal.zip
       - name: Release decode benchmark
         shell: bash
