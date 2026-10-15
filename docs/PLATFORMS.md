@@ -118,8 +118,8 @@ input pass-through, full-screen suppression and release/quit during a pending ge
 Test Save/Cancel/close/reopen, permissions revoked mid-session, mouse acceleration,
 non-US layouts, mixed DPI, multiple monitors, reduced motion, emote timing and audio.
 Windows resizes the overlay after display changes and restores the tray icon after Explorer
-restarts. On Linux/macOS, restart after display-scale/topology changes; Linux monitor scales
-are sampled at startup.
+restarts. macOS places each overlay frame at live logical coordinates. On Linux, restart
+after display-scale/topology changes; monitor scales are sampled at startup.
 Linux uses one bounded native surface (16 million pixels); very widely separated effects
 can be discarded rather than allocating an unbounded desktop-sized buffer.
 

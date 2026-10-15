@@ -94,6 +94,42 @@ jobs:
           codesign --force --deep --sign - "$app"
           lipo "$app/Contents/MacOS/pingloom" -verify_arch arm64 x86_64
           ditto -c -k --sequesterRsrc --keepParent "$app" release/pingloom-macos-universal.zip
+      - name: Windows runtime smoke test
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          Add-Type -Namespace W -Name U -MemberDefinition @'
+          [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindowW(string cls, string title);
+          [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern uint RegisterWindowMessageW(string name);
+          [DllImport("user32.dll")] public static extern IntPtr SendMessageTimeoutW(IntPtr hwnd, uint msg, UIntPtr w, IntPtr l, uint flags, uint timeout, out UIntPtr result);
+          '@
+          $p = Start-Process target/release/pingloom.exe -PassThru
+          Start-Sleep 10
+          if ($p.HasExited) { throw "pingloom exited with code $($p.ExitCode)" }
+          # Top-level (not message-only) owner window, so broadcasts reach it.
+          $hwnd = [W.U]::FindWindowW('pingloom-main', $null)
+          if ($hwnd -eq [IntPtr]::Zero) { throw 'owner window is not a top-level window' }
+          $r = [UIntPtr]::Zero
+          # TaskbarCreated (tray re-add) and WM_DISPLAYCHANGE (overlay rebuild).
+          foreach ($msg in @([W.U]::RegisterWindowMessageW('TaskbarCreated'), 0x7E)) {
+            if ([W.U]::SendMessageTimeoutW($hwnd, $msg, [UIntPtr]::Zero, [IntPtr]::Zero, 2, 5000, [ref]$r) -eq [IntPtr]::Zero) { throw "message $msg not handled within 5 s" }
+          }
+          Start-Sleep 2
+          if ($p.HasExited) { throw "pingloom exited with code $($p.ExitCode)" }
+          Stop-Process -Id $p.Id
+      - name: macOS runtime smoke test (both architectures)
+        if: matrix.platform == 'macos'
+        run: |
+          binary=target/universal-apple-darwin/release/bundle/macos/Pingloom.app/Contents/MacOS/pingloom
+          for arch in arm64 x86_64; do
+            # Accessibility is not granted on CI: the app must prompt and keep waiting.
+            arch -$arch "$binary" > "smoke-$arch.log" 2>&1 &
+            pid=$!
+            sleep 15
+            if ! kill -0 $pid; then cat "smoke-$arch.log"; echo "Pingloom ($arch) exited early"; exit 1; fi
+            kill $pid; wait $pid || true
+            echo "Pingloom ($arch) stayed running"; cat "smoke-$arch.log"
+          done
       - name: Release decode benchmark
         shell: bash
         run: PINGLOOM_BENCH_OUT=bench.json cargo nextest run --locked --release --run-ignored only -E 'test(decode_benchmark)'
