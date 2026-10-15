@@ -26,9 +26,9 @@ use windows_sys::Win32::Graphics::Gdi::{
     DT_SINGLELINE, DT_VCENTER, FW_SEMIBOLD, HBITMAP, HDC, HFONT, HGDIOBJ, TRANSPARENT,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, RegisterClassW, SetWindowPos, ShowWindow,
+    CreateWindowExW, DefWindowProcW, IsWindowVisible, RegisterClassW, SetWindowPos, ShowWindow,
     SystemParametersInfoW, UpdateLayeredWindow, CS_HREDRAW, CS_VREDRAW, HWND_TOPMOST,
-    SPI_GETCLIENTAREAANIMATION, SWP_NOACTIVATE, SWP_SHOWWINDOW, SW_HIDE, SW_SHOWNOACTIVATE,
+    SPI_GETCLIENTAREAANIMATION, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW, SW_HIDE,
     ULW_ALPHA, WNDCLASSW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
     WS_EX_TRANSPARENT, WS_POPUP,
 };
@@ -453,7 +453,18 @@ impl Overlay {
         }
 
         unsafe {
-            ShowWindow(self.hwnd, SW_SHOWNOACTIVATE);
+            if IsWindowVisible(self.hwnd) == 0 {
+                // Re-raise: always-on-top windows activated since the last show would cover it.
+                SetWindowPos(
+                    self.hwnd,
+                    HWND_TOPMOST,
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW,
+                );
+            }
             let len = (self.width as usize) * (self.height as usize) * 4;
             std::ptr::write_bytes(self.pixels, 0, len);
             let mut canvas = Canvas {
