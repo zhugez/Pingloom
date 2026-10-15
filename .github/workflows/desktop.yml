@@ -107,7 +107,8 @@ jobs:
           Start-Sleep 10
           if ($p.HasExited) { throw "pingloom exited with code $($p.ExitCode)" }
           # Top-level (not message-only) owner window, so broadcasts reach it.
-          $hwnd = [W.U]::FindWindowW('pingloom-main', $null)
+          # PowerShell turns $null into "" for string arguments, so match the title.
+          $hwnd = [W.U]::FindWindowW('pingloom-main', 'Pingloom')
           if ($hwnd -eq [IntPtr]::Zero) { throw 'owner window is not a top-level window' }
           $r = [UIntPtr]::Zero
           # TaskbarCreated (tray re-add) and WM_DISPLAYCHANGE (overlay rebuild).
