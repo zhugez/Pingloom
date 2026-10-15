@@ -47,6 +47,7 @@
   let importMessage = $state('');
   let sessionAlive = $state(true);
   let loadError = $state('');
+  let runtimeWarning = $state('');
   let saveMessage = $state('');
   let errors: Record<string, FieldError> = $state({});
   let requestId = '';
@@ -126,14 +127,17 @@
         if (disposed) return;
         boot = data;
         draft = cloneSettings(data.settings);
-        if (data.load_warning) loadError = data.load_warning;
+        runtimeWarning = data.load_warning ?? '';
         heartbeat = setInterval(async () => {
           if (!boot || heartbeatPending || !sessionAlive) return;
           heartbeatPending = true;
           try {
             const session = boot.session_id;
-            const status = await invoke<BootData['status']>('settings_heartbeat', { session_id: session });
-            if (!disposed && boot?.session_id === session && sessionAlive) boot.status = status;
+            const runtime = await invoke<{ status: BootData['status']; load_warning: string | null }>('settings_heartbeat', { session_id: session });
+            if (!disposed && boot?.session_id === session && sessionAlive) {
+              boot.status = runtime.status;
+              runtimeWarning = runtime.load_warning ?? '';
+            }
           } catch (error) {
             sessionAlive = false;
             loadError = `Settings session expired: ${messageOf(error)}`;
@@ -489,7 +493,7 @@
       </div>
     </nav>
     <main class="desktop-body" id="settings-content">
-      {#if loadError}<div class="notice-callout warning" role="status"><AlertCircle size={17} /><span>{loadError}</span></div>{/if}
+      {#if loadError || runtimeWarning}<div class="notice-callout warning" role="status"><AlertCircle size={17} /><span>{loadError || runtimeWarning}</span></div>{/if}
       {#if appearanceError}<div class="notice-callout warning" role="status"><AlertCircle size={17} /><span>{appearanceError}</span></div>{/if}
       <form bind:this={formEl} onsubmit={event => { event.preventDefault(); void save(); }}>
         {#if page === 'triggers'}

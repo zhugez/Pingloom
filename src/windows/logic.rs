@@ -75,6 +75,24 @@ pub fn constrain_rect_to_work_area(work: UiRect, proposed: UiRect) -> UiRect {
     }
 }
 
+/// FlagsChanged arrives before CGEventSourceKeyState reflects that change.
+/// Use the event's per-side NX_DEVICE*KEYMASK bits (IOKit/hidsystem/IOLLEvent.h),
+/// not the previous HID state or the aggregate flag shared by both modifier keys.
+pub fn macos_modifier_down(keycode: u16, flags: u64) -> Option<bool> {
+    let mask = match keycode {
+        59 => 0x0001, // left Control
+        56 => 0x0002, // left Shift
+        60 => 0x0004, // right Shift
+        55 => 0x0008, // left Command
+        54 => 0x0010, // right Command
+        58 => 0x0020, // left Option
+        61 => 0x0040, // right Option
+        62 => 0x2000, // right Control
+        _ => return None,
+    };
+    Some(flags & mask != 0)
+}
+
 pub fn wheel_boundary_angle_degrees(boundary: usize) -> f64 {
     boundary as f64 * 45.0 - 112.5
 }
@@ -447,6 +465,101 @@ fn any_key(key_down: &mut impl FnMut(u8) -> bool, keys: &[u8]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn macos_modifiers_use_event_flags_not_the_previous_hid_state() {
+        // Physical Mac trace: Option press has flags=true/HID=false; release is reversed.
+        for (flags, old_hid, expected) in [(0x80020, false, true), (0, true, false)] {
+            assert_eq!(macos_modifier_down(58, flags), Some(expected));
+            assert_ne!(expected, old_hid);
+        }
+        for (left, right, lmask, rmask, aggregate) in [
+            (58, 61, 0x20, 0x40, 0x80000),
+            (56, 60, 0x2, 0x4, 0x20000),
+            (59, 62, 0x1, 0x2000, 0x40000),
+            (55, 54, 0x8, 0x10, 0x100000),
+        ] {
+            assert_eq!(
+                macos_modifier_down(left, aggregate | lmask | rmask),
+                Some(true)
+            );
+            assert_eq!(
+                macos_modifier_down(right, aggregate | lmask | rmask),
+                Some(true)
+            );
+            // Releasing one side must not keep it down just because the sibling is held.
+            assert_eq!(macos_modifier_down(left, aggregate | rmask), Some(false));
+            assert_eq!(macos_modifier_down(right, aggregate | rmask), Some(true));
+            assert_eq!(macos_modifier_down(right, 0), Some(false));
+        }
+        assert_eq!(macos_modifier_down(57, 0x10000), None); // Caps Lock is not a macOS trigger.
+        assert_eq!(macos_modifier_down(0, u64::MAX), None);
+    }
+
+    #[test]
+    fn macos_option_physical_trace_opens_selects_and_balances_the_trigger() {
+        use pingloom_core::{Action, GestureEngine, InputEvent, Point, WheelKind};
+        let mut engine = GestureEngine::new(Settings::default()).unwrap();
+        let modifier = |flags| {
+            if macos_modifier_down(58, flags).unwrap() {
+                InputEvent::KeyDown {
+                    vk: 0xa4,
+                    injected: false,
+                }
+            } else {
+                InputEvent::KeyUp {
+                    vk: 0xa4,
+                    injected: false,
+                }
+            }
+        };
+        engine.on_event(modifier(0x80020));
+        let down = engine.on_event(InputEvent::PointerDown {
+            button: Button::Left,
+            point: Point::new(100, 100),
+            time_ms: 10,
+            injected: false,
+            fullscreen_app: false,
+            dpi_scale: 1.0,
+        });
+        assert!(down.swallow);
+        let drag = engine.on_event(InputEvent::PointerMove {
+            point: Point::new(300, 100),
+            time_ms: 30,
+            injected: false,
+        });
+        assert!(drag.actions.iter().any(|a| matches!(
+            a,
+            Action::WheelOpen {
+                wheel: WheelKind::Ping,
+                ..
+            }
+        )));
+        let up = engine.on_event(InputEvent::PointerUp {
+            button: Button::Left,
+            point: Point::new(300, 100),
+            time_ms: 40,
+            injected: false,
+        });
+        assert!(up.actions.iter().any(|a| matches!(
+            a,
+            Action::Select {
+                wheel: WheelKind::Ping,
+                slot: 2,
+                ..
+            }
+        )));
+        engine.on_event(modifier(0));
+        let ordinary = engine.on_event(InputEvent::PointerDown {
+            button: Button::Left,
+            point: Point::new(100, 100),
+            time_ms: 60,
+            injected: false,
+            fullscreen_app: false,
+            dpi_scale: 1.0,
+        });
+        assert!(!ordinary.swallow);
+    }
 
     #[test]
     fn deferred_messages_are_taken_once_in_fifo_order() {

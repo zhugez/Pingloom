@@ -286,8 +286,7 @@ pub(super) fn run(shared: Arc<Shared>) -> Result<(), String> {
             CGEventType::KeyDown|CGEventType::KeyUp=>Some(if matches!(kind,CGEventType::KeyDown){InputEvent::KeyDown{vk:vk(event.get_integer_value_field(EventField::KEYBOARD_EVENT_KEYCODE) as u16),injected:false}}else{InputEvent::KeyUp{vk:vk(event.get_integer_value_field(EventField::KEYBOARD_EVENT_KEYCODE) as u16),injected:false}}),
             CGEventType::FlagsChanged=>{
                 let code=event.get_integer_value_field(EventField::KEYBOARD_EVENT_KEYCODE) as u16;
-                if code==57{return CallbackResult::Keep;}
-                Some(if unsafe{CGEventSourceKeyState(CGEventSourceStateID::HIDSystemState as i32,code)}{InputEvent::KeyDown{vk:vk(code),injected:false}}else{InputEvent::KeyUp{vk:vk(code),injected:false}})
+                crate::logic::macos_modifier_down(code,event.get_flags().bits()).map(|down|if down{InputEvent::KeyDown{vk:vk(code),injected:false}}else{InputEvent::KeyUp{vk:vk(code),injected:false}})
             }
             CGEventType::MouseMoved|CGEventType::LeftMouseDragged|CGEventType::RightMouseDragged|CGEventType::OtherMouseDragged=>Some(InputEvent::PointerMove{point,time_ms,injected:false}),
             _=>button(kind,event).map(|(button,down)|if down{callback.resync(false,key_down);InputEvent::PointerDown{button,point,time_ms,injected:false,fullscreen_app:fullscreen_at(point),dpi_scale:callback.scale_at(point)}}else{InputEvent::PointerUp{button,point,time_ms,injected:false}}),

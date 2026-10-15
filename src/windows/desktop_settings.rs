@@ -63,6 +63,11 @@ pub(crate) struct Boot {
     platform: &'static str,
 }
 #[derive(serde::Serialize)]
+pub(crate) struct Heartbeat {
+    status: String,
+    load_warning: Option<String>,
+}
+#[derive(serde::Serialize)]
 pub(crate) struct Saved {
     request_id: String,
     settings: Settings,
@@ -358,7 +363,7 @@ pub(crate) async fn settings_heartbeat<R: Runtime>(
     window: WebviewWindow<R>,
     state: tauri::State<'_, Arc<DesktopSettingsState>>,
     session_id: String,
-) -> Result<String, Rejection> {
+) -> Result<Heartbeat, Rejection> {
     trusted(&window)?;
     if session_id.len() > 64 {
         return Err(Rejection {
@@ -392,7 +397,10 @@ pub(crate) async fn settings_heartbeat<R: Runtime>(
         .map_err(|e| Rejection::from(OwnerError::unavailable(e.to_string())))?
         .map_err(Rejection::from)?;
     check_session(&state, &session_id)?;
-    Ok(status(run_status))
+    Ok(Heartbeat {
+        status: status(run_status.clone()),
+        load_warning: run_status.load_warning,
+    })
 }
 #[tauri::command(rename_all = "snake_case")]
 pub(crate) async fn close_settings<R: Runtime>(
