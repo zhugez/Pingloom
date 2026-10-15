@@ -24,9 +24,9 @@ Native Rust owns latency-sensitive low-level keyboard/mouse hooks, input replay,
 
 | Platform | Download | Requirements |
 | --- | --- | --- |
-| Windows 11 x64 | [pingloom.exe](https://github.com/zhugez/pingloom/releases/download/v0.1.0/pingloom.exe) | Evergreen WebView2; unsigned executable |
+| Windows 11 x64 | [Installer](https://github.com/zhugez/pingloom/releases/download/v0.1.0/Pingloom_0.1.0_x64-setup.exe) · [portable exe](https://github.com/zhugez/pingloom/releases/download/v0.1.0/pingloom.exe) | Evergreen WebView2; unsigned |
 | Linux x64 | [DEB](https://github.com/zhugez/pingloom/releases/download/v0.1.0/Pingloom_0.1.0_amd64.deb) · [tar.gz](https://github.com/zhugez/pingloom/releases/download/v0.1.0/pingloom-linux-x64.tar.gz) | Ubuntu 24.04-compatible dependencies, compositing X11 and input-device permissions; experimental |
-| macOS ARM64 | [App ZIP](https://github.com/zhugez/pingloom/releases/download/v0.1.0/pingloom-macos-arm64.zip) | Accessibility/Input Monitoring; ad-hoc signed, not notarized; experimental |
+| macOS (Apple Silicon + Intel) | [App ZIP](https://github.com/zhugez/pingloom/releases/download/v0.1.0/pingloom-macos-universal.zip) | Accessibility; ad-hoc signed, not notarized; experimental |
 
 [Release notes, build provenance and SHA-256 checksums](https://github.com/zhugez/pingloom/releases/tag/v0.1.0).
 
@@ -97,7 +97,7 @@ Legacy settings storage path and schema are preserved for backwards compatibilit
 
 ### Prerequisites
 
-- **Target OS**: Windows 11 x64; experimental Linux x64/X11 and macOS ARM64. [Unix build/runtime prerequisites](docs/PLATFORMS.md).
+- **Target OS**: Windows 11 x64; experimental Linux x64/X11 and macOS (universal). [Unix build/runtime prerequisites](docs/PLATFORMS.md).
 - **Windows Runtime Prerequisite**: Microsoft **Evergreen WebView2 Runtime** (preinstalled on Windows 11; required for the Settings WebView).
 - **Build Tools**:
   - Rust stable (`x86_64-pc-windows-msvc` toolchain).
