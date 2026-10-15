@@ -117,7 +117,9 @@ cancellation, click pass-through, modifier/hotkey balance, foreign shortcuts, in
 input pass-through, full-screen suppression and release/quit during a pending gesture.
 Test Save/Cancel/close/reopen, permissions revoked mid-session, mouse acceleration,
 non-US layouts, mixed DPI, multiple monitors, reduced motion, emote timing and audio.
-Restart after display-scale/topology changes; Linux monitor scales are sampled at startup.
+Windows resizes the overlay after display changes and restores the tray icon after Explorer
+restarts. On Linux/macOS, restart after display-scale/topology changes; Linux monitor scales
+are sampled at startup.
 Linux uses one bounded native surface (16 million pixels); very widely separated effects
 can be discarded rather than allocating an unbounded desktop-sized buffer.
 

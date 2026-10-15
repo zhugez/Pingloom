@@ -41,9 +41,9 @@ use windows_sys::Win32::UI::Shell::{
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CallNextHookEx, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu,
     DispatchMessageW, GetCursorPos, GetMessageW, LoadIconW, PeekMessageW, PostMessageW,
-    PostQuitMessage, RegisterClassW, SetForegroundWindow, SetTimer, SetWindowLongPtrW,
-    SetWindowsHookExW, TrackPopupMenu, TranslateMessage, UnhookWindowsHookEx, CREATESTRUCTW,
-    GWLP_USERDATA, GWL_STYLE, HC_ACTION, HHOOK, HWND_MESSAGE, IDI_APPLICATION, KBDLLHOOKSTRUCT,
+    PostQuitMessage, RegisterClassW, RegisterWindowMessageW, SetForegroundWindow, SetTimer,
+    SetWindowLongPtrW, SetWindowsHookExW, TrackPopupMenu, TranslateMessage, UnhookWindowsHookEx,
+    CREATESTRUCTW, GWLP_USERDATA, GWL_STYLE, HC_ACTION, HHOOK, IDI_APPLICATION, KBDLLHOOKSTRUCT,
     LLKHF_INJECTED, LLMHF_INJECTED, MF_GRAYED, MF_STRING, MSLLHOOKSTRUCT, TPM_RETURNCMD,
     TPM_RIGHTBUTTON, WH_KEYBOARD_LL, WH_MOUSE_LL, WM_APP, WM_CLOSE, WM_CONTEXTMENU, WM_DESTROY,
     WM_DISPLAYCHANGE, WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN,
@@ -73,6 +73,8 @@ const ID_TOGGLE: i32 = 2;
 const ID_QUIT: i32 = 3;
 
 static mut APPLICATION: *mut App = null_mut();
+/// Broadcast when Explorer (re)creates the taskbar; notification icons must be re-added.
+static mut TASKBAR_CREATED: u32 = 0;
 
 #[derive(Clone, Copy)]
 struct DeferredMainMessage {
@@ -195,6 +197,9 @@ unsafe fn run_inner(
     let app_ptr = (&mut *app) as *mut App;
     APPLICATION = app_ptr;
     PeekMessageW(&mut zeroed(), null_mut(), WM_APP, WM_APP, 0); // ensure the hook thread has a message queue
+    TASKBAR_CREATED = RegisterWindowMessageW(w!("TaskbarCreated"));
+    // Hidden top-level window, not HWND_MESSAGE: message-only windows miss the
+    // WM_DISPLAYCHANGE and TaskbarCreated broadcasts.
     let hwnd = CreateWindowExW(
         WS_EX_TOOLWINDOW,
         w!("pingloom-main"),
@@ -204,7 +209,7 @@ unsafe fn run_inner(
         0,
         0,
         0,
-        HWND_MESSAGE,
+        null_mut(),
         null_mut(),
         instance,
         app_ptr.cast(),
@@ -298,6 +303,7 @@ unsafe fn dispatch_deferred_main_messages() {
                 }
                 APP_SETTINGS_MESSAGE => apply_settings_message(message.lparam),
                 WM_DISPLAYCHANGE => handle_display_change(),
+                m if is_taskbar_created(m) => restore_tray(),
                 WM_REPLAY_FAILURE => show_error("Windows could not replay one or more inputs. Gestures have been paused; use the tray to resume."),
                 WM_SETTINGS_FAILURE => show_error("Could not create the settings window."),
                 WM_INJECT | WM_ACTION | WM_FRAMES | APP_SETTINGS_CLOSED => {
@@ -336,8 +342,18 @@ unsafe fn defer_during_settings_callback(message: u32, wparam: WPARAM, lparam: L
         return false;
     }
     match message {
-        WM_INJECT | WM_ACTION | WM_FRAMES | APP_SETTINGS_MESSAGE | APP_SETTINGS_CLOSED
-        | WM_REPLAY_FAILURE | WM_SETTINGS_FAILURE | WM_DISPLAYCHANGE => {
+        _ if matches!(
+            message,
+            WM_INJECT
+                | WM_ACTION
+                | WM_FRAMES
+                | APP_SETTINGS_MESSAGE
+                | APP_SETTINGS_CLOSED
+                | WM_REPLAY_FAILURE
+                | WM_SETTINGS_FAILURE
+                | WM_DISPLAYCHANGE
+        ) || is_taskbar_created(message) =>
+        {
             DEFERRED_MAIN_MESSAGES.with(|queue| {
                 queue.borrow_mut().push(DeferredMainMessage {
                     message,
@@ -477,6 +493,10 @@ impl App {
             UnhookWindowsHookEx(self.key_hook);
             self.key_hook = null_mut();
         }
+        self.remove_tray();
+    }
+
+    unsafe fn remove_tray(&mut self) {
         if self.tray_added {
             let mut data: NOTIFYICONDATAW = zeroed();
             data.cbSize = size_of::<NOTIFYICONDATAW>() as u32;
@@ -1026,6 +1046,19 @@ unsafe fn apply_settings_message(lparam: LPARAM) {
     }
 }
 
+unsafe fn is_taskbar_created(message: u32) -> bool {
+    message != 0 && message == TASKBAR_CREATED
+}
+
+unsafe fn restore_tray() {
+    let app = APPLICATION;
+    if !app.is_null() {
+        // The icon may still exist (taskbar DPI change), so replace it.
+        (&mut *app).remove_tray();
+        let _ = (&mut *app).install_tray();
+    }
+}
+
 unsafe fn handle_display_change() {
     let app = APPLICATION;
     if app.is_null() {
@@ -1077,6 +1110,10 @@ unsafe extern "system" fn main_proc(
         }
         WM_DISPLAYCHANGE => {
             handle_display_change();
+            0
+        }
+        _ if is_taskbar_created(message) => {
+            restore_tray();
             0
         }
         WM_REPLAY_FAILURE => {
