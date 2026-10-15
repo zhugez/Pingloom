@@ -254,7 +254,7 @@ function findChrome() {
           }
           if (cmd === 'settings_heartbeat') {
             window.__heartbeatCount = (window.__heartbeatCount || 0) + 1;
-            return window.__tauri_mock.status;
+            return { status: window.__tauri_mock.status, load_warning: window.__tauri_mock.load_warning ?? null };
           }
           if (cmd === 'close_settings') {
             window.__closedCount = (window.__closedCount || 0) + 1;
@@ -350,10 +350,13 @@ function findChrome() {
     }
 
     // Tray/hotkey changes are reflected without overwriting the Settings draft.
-    await page.evaluate(() => { window.__tauri_mock.status = 'paused'; });
+    await page.evaluate(() => { window.__tauri_mock.status = 'paused'; window.__tauri_mock.load_warning = 'Allow Pingloom in Accessibility.'; });
     await page.waitForFunction(() => document.querySelector('.status-label').textContent.trim() === 'Paused', { timeout: 7000 });
-    await page.evaluate(() => { window.__tauri_mock.status = 'active'; });
+    await page.waitForFunction(() => document.querySelector('.notice-callout.warning')?.textContent.includes('Allow Pingloom'));
+    await page.evaluate(() => { window.__tauri_mock.status = 'active'; window.__tauri_mock.load_warning = null; });
     await page.waitForFunction(() => document.querySelector('.status-label').textContent.trim() === 'Gestures active', { timeout: 7000 });
+
+    await page.waitForFunction(() => !document.querySelector('.notice-callout.warning'));
 
     // Verify gesture copy is present
     const gestureCopy = await page.$eval('.gesture-banner', el => el.textContent);
