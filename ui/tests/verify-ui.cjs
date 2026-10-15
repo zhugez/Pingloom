@@ -25,6 +25,8 @@ if (!fs.existsSync(SCREENSHOT_DIR)) {
 // and GIF export quantizes the palette. Keep review captures as lossless PNG.
 async function capture(page, filename) {
   await page.evaluate(async () => {
+    const body = document.querySelector('.desktop-body');
+    if (body) body.scrollTop = 0;
     await document.fonts.ready;
     await Promise.all([...document.images].filter(img => img.complete).map(img => img.decode().catch(() => {})));
     await Promise.all(document.getAnimations()
@@ -91,7 +93,7 @@ const initialSettings = {
   version: 1,
   enabled_on_start: true,
   trigger: 'alt',
-  emote_trigger: 'off',
+  emote_trigger: null,
   toggle_hotkey: { mods: 3, vk: 80 },
   drag_threshold_px: 12,
   click_ping: true,
@@ -446,6 +448,38 @@ function findChrome() {
       throw new Error(`Expected 8 images in wheel preview, found ${imgCount}`);
     }
 
+    // V7's preview is local: drag-to-send, centre cancellation, sliders and dirty state.
+    console.log('Testing local wheel gestures, cancellation and size preview...');
+    await page.$eval('.radial-wheel', el => el.scrollIntoView({ block: 'center' }));
+    let wheelBox = await page.$eval('.radial-wheel', el => {
+      const r = el.getBoundingClientRect();
+      return { x: r.x + r.width / 2, y: r.y + r.height / 2, radius: r.width / 2 };
+    });
+    await page.mouse.move(wheelBox.x, wheelBox.y);
+    await page.mouse.down();
+    await page.mouse.move(wheelBox.x + wheelBox.radius * .65, wheelBox.y, { steps: 8 });
+    if (await page.$eval('.wheel-node.pos-e', el => el.getAttribute('aria-pressed')) !== 'true') throw new Error('Dragging east did not select the East slice');
+    await page.mouse.up();
+    await page.waitForFunction(() => document.querySelector('.preview-effect .effect-caption')?.textContent.includes('On My Way'));
+    if (await page.evaluate(() => window.__savedCandidate)) throw new Error('Local preview unexpectedly saved settings');
+    if (!await page.$eval('.status-msg.info', el => el.textContent.includes('Everything is saved'))) throw new Error('Preview marked the draft dirty');
+    await page.mouse.move(wheelBox.x, wheelBox.y);
+    await page.mouse.down();
+    await page.mouse.move(wheelBox.x, wheelBox.y - wheelBox.radius * .65, { steps: 8 });
+    await page.mouse.move(wheelBox.x, wheelBox.y, { steps: 8 });
+    await page.mouse.up();
+    if (await page.$('.preview-effect')) throw new Error('Releasing in the centre fired a preview');
+    if (!await page.$eval('.radial-wheel + .sr-only', el => el.textContent.includes('cancelled'))) throw new Error('Cancellation was not announced');
+    await page.$eval('#ping-size', el => { el.value = '180'; el.dispatchEvent(new Event('input', { bubbles: true })); });
+    await page.waitForSelector('.size-peek');
+    if (!await page.$eval('.size-peek', el => el.textContent.includes('180 px'))) throw new Error('Size slider did not update the local preview');
+    if (!await page.$eval('.status-msg.info', el => el.textContent.includes('1 unsaved change'))) throw new Error('Size slider did not mark the draft dirty');
+    await page.$eval('#ping-size', el => { el.value = '128'; el.dispatchEvent(new Event('input', { bubbles: true })); });
+    if (!await page.$eval('.status-msg.info', el => el.textContent.includes('Everything is saved'))) throw new Error('Reverting a slider did not clear dirty state');
+    await page.click('#tab-emotes');
+    await page.click('#tab-pings');
+    await page.$eval('.desktop-body', el => { el.scrollTop = 0; });
+
     // Capture Pings screenshot (960x720)
     await capture(page, '02-pings-960x720.png');
     console.log('Saved 02-pings-960x720.png');
@@ -719,6 +753,21 @@ function findChrome() {
     await page.evaluate(() => window.__resumeSave());
     await page.waitForSelector('.status-msg.success');
 
+    // All shipped window sizes keep native chrome, tabs and Save reachable.
+    for (const [width, height] of [[1000, 760], [760, 600], [480, 360]]) {
+      await page.setViewport({ width, height });
+      const layout = await page.evaluate(() => {
+        const shell = document.querySelector('.desktop-shell');
+        const footer = document.querySelector('.desktop-footer').getBoundingClientRect();
+        const save = document.querySelector('.btn-footer-primary').getBoundingClientRect();
+        const close = document.querySelector('.btn-close').getBoundingClientRect();
+        const nav = document.querySelector('.nav-tabs-wrapper').getBoundingClientRect();
+        return { overflow: shell.scrollWidth > innerWidth, reachable: footer.top >= nav.bottom && save.right <= innerWidth && save.bottom <= innerHeight && close.right <= innerWidth };
+      });
+      if (layout.overflow || !layout.reachable) throw new Error(`Window layout regression at ${width}x${height}: ${JSON.stringify(layout)}`);
+    }
+    await page.setViewport({ width: 960, height: 720 });
+
     // 9. All Close paths retain the existing close_settings IPC semantics.
     console.log('Testing Window Chrome, footer Close, and Escape...');
     await page.evaluate(() => { window.__closedCount = 0; });
@@ -742,6 +791,7 @@ function findChrome() {
         ...Object.fromEntries(['latte', 'frappe', 'macchiato', 'mocha'].map(name => [`theme-${name}-960x720.png`, `pingloom-${name}-preview.png`])),
       };
       for (const [captureName, readmeName] of Object.entries(previews)) fs.copyFileSync(path.join(SCREENSHOT_DIR, captureName), path.resolve(__dirname, '../../docs/media', readmeName));
+      fs.copyFileSync(path.join(SCREENSHOT_DIR, 'theme-mocha-960x720.png'), path.resolve(__dirname, '../../docs/media/pingloom-preview.png'));
       console.log('Refreshed all README screenshots from the verified current UI.');
     }
     console.log('ALL BROWSER AUTOMATION TESTS PASSED SUCCESSFULLY!');

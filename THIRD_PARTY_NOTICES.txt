@@ -43,3 +43,10 @@ registered trademarks of Riot Games, Inc.
 Bundled font assets located in ui/src/fonts/
 Copyright 2020 The Plus Jakarta Sans Project Authors (https://github.com/tokotype/PlusJakartaSans)
 Licensed under the SIL Open Font License, Version 1.1 (see ui/src/fonts/OFL.txt).
+
+--------------------------------------------------------------------------------
+3. Bricolage Grotesque (SIL Open Font License 1.1)
+--------------------------------------------------------------------------------
+Bundled font assets located in ui/src/fonts/ (bricolage-grotesque-*.woff2)
+Copyright 2022 The Bricolage Grotesque Project Authors (https://github.com/ateliertriay/bricolage)
+Licensed under the SIL Open Font License, Version 1.1 (see ui/src/fonts/OFL-bricolage-grotesque.txt).

@@ -37,7 +37,7 @@ Native Rust owns latency-sensitive low-level keyboard/mouse hooks, input replay,
 - **Game-independent communication**: Summon tactical wheel pings (Danger, On My Way, Assist Me, Need Vision, etc.) and animated emotes on supported desktop sessions.
 - **Zero game hooking**: Operates entirely outside game processes via native OS input APIs; no game-process injection.
 - **Native execution architecture**: All gesture recognition, wheel hit-testing, and transparent overlay drawing run directly in compiled native Rust (architectural design, not an empirical latency benchmark).
-- **Theme-aware Settings**: Default Sapphire light/dark and Catppuccin Latte, Frappé, Macchiato and Mocha. Separate titlebar/navigation, flat property groups, readable 36px controls and responsive layouts. The ribbon-woven P uses the theme foreground in Settings; desktop icons use a fixed high-contrast plate. See [design details](DESIGN.md).
+- **Theme-aware Settings**: Pingloom Blush light/dark and Catppuccin Latte, Frappé, Macchiato and Mocha. Floating titlebar/navigation, double-bezel surfaces, a local drag-test wheel, persistent Save controls and responsive layouts. The ribbon-woven P uses the theme foreground in Settings; desktop icons use a fixed high-contrast plate. See [design details](DESIGN.md).
 
 ---
 
@@ -64,7 +64,7 @@ Custom images are stored in `custom-emotes/` next to `settings.json`; back up/co
 
 The Settings window provides complete customization across three focused pages:
 
-- **Triggers**: Trigger key selectors (`Alt`, `Ctrl`, `Shift`, `Windows`, `Off`, or custom virtual keys), drag threshold numeric input (2–40 px), enable-gestures-at-launch toggle (`enabled_on_start`; not OS startup registration), pause over fullscreen games, and global toggle hotkey editor.
+- **Triggers**: Trigger key selectors (`Alt`, `Ctrl`, `Shift`, `Windows`, `Off`, or custom virtual keys), drag threshold slider (2–40 px), enable-gestures-at-launch toggle (`enabled_on_start`; not OS startup registration), pause over fullscreen games, and global toggle hotkey editor.
 - **Tactical Pings**: Interactive 8-slice radial preview with real League ping icons, real-time duplicate slot detection, 8-row slot assignment table, ping size scaling (60–220 px), display duration (1.0–8.0 s), effects volume (0–100%), tick sounds, and mute toggle.
 - **Emotes**: Illustrated picker and eight-slice radial preview, native bundled WebP animations, size (80–300 px) and audio controls. **Import custom emote** accepts PNG/JPG stills and GIF/WebP animations for wheel and trigger-tap choices: up to 8 MiB / 2048×2048 input, native artwork capped at 512px, 16 custom images / 32 MiB total. Animations are limited to 300 frames / 30 seconds / 128 MiB decoded memory and loop during the normal **3-second** native emote lifetime. Reduced motion uses the first frame. No custom audio yet. Import stores artwork immediately; assignments apply only on Save. Every native renderer decodes animated frames off the input thread and waits for them instead of flashing a differently sized PNG thumbnail; built-in motion within WebP assets is preserved.
 
@@ -72,9 +72,9 @@ The Settings window provides complete customization across three focused pages:
 
 ### Current UI
 
-Use the **Color theme** selector in the titlebar and the adjacent light/dark toggle (Default Sapphire or Catppuccin Latte / Frappé / Macchiato / Mocha). Appearance is saved locally immediately, independently of gesture configuration Save.
+Use the **Color theme** selector in the titlebar and the adjacent light/dark toggle (Pingloom Blush or Catppuccin Latte / Frappé / Macchiato / Mocha). Appearance is saved locally immediately, independently of gesture configuration Save.
 
-Select a wheel slice, then choose an image from the visual catalog alongside it. Full dropdown assignments remain under **All 8 assignments**. Emotes includes custom PNG/JPG/GIF/WebP import.
+Select a wheel slice, then choose an image from the visual catalog alongside it. Drag the test wheel and release to preview locally; release in its centre to cancel. Preview sounds are synthesized, not the bundled clips. Full dropdown assignments remain under **All 8 assignments**. Emotes includes custom PNG/JPG/GIF/WebP import.
 
 <p align="center">
   <img src="docs/media/pingloom-preview.png" alt="Pingloom Settings: Catppuccin Mocha theme with radial wheel and visual catalog" width="960" />
