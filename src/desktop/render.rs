@@ -27,7 +27,6 @@ struct Wheel {
     blend: [f64; 8],
     updated: Instant,
     scale: f64,
-    labels: Option<RgbaImage>,
     surface: crate::wheel::Surface,
 }
 struct Ping {
@@ -93,7 +92,6 @@ impl Renderer {
                     blend: [0.0; 8],
                     updated: Instant::now(),
                     scale: queued.scale,
-                    labels: crate::wheel::labels(queued.scale),
                     surface: crate::wheel::Surface::new(queued.scale),
                 });
                 None
@@ -229,6 +227,7 @@ impl Renderer {
                     selection_blend(*blend, wheel.hot == Some(slot), dt)
                 };
             }
+            wheel.surface.refresh(wheel.scale);
             wheel.surface.paint(&wheel.blend, |dx, dy, rgba| {
                 point(
                     &mut image,
@@ -243,7 +242,7 @@ impl Renderer {
             let scale = wheel.scale;
             let origin = wheel.origin;
             let blends = wheel.blend;
-            if let Some(labels) = &wheel.labels {
+            if let Some(labels) = &wheel.surface.labels {
                 blit(
                     &mut image,
                     labels,
@@ -447,7 +446,6 @@ mod tests {
             blend: [0.0; 8],
             updated: start,
             scale: 0.65,
-            labels: crate::wheel::labels(0.65),
             surface: crate::wheel::Surface::new(0.65),
         });
         renderer.pings.push(Ping {
@@ -612,7 +610,6 @@ mod tests {
                     blend: [0.0; 8],
                     updated: start,
                     scale,
-                    labels: crate::wheel::labels(scale),
                     surface: crate::wheel::Surface::new(scale),
                 });
                 let clock = Instant::now();
@@ -643,7 +640,7 @@ mod tests {
                         .0,
                     [26, 23, 27, 250]
                 );
-                assert!(renderer.wheel.as_ref().unwrap().labels.is_some());
+                assert!(renderer.wheel.as_ref().unwrap().surface.labels.is_some());
                 if let Some(dir) = &export {
                     frame
                         .image

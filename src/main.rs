@@ -6,6 +6,8 @@ pub mod logic;
 #[cfg(feature = "desktop")]
 mod animation;
 #[cfg(feature = "desktop")]
+mod appearance;
+#[cfg(feature = "desktop")]
 #[path = "windows/assets.rs"]
 mod assets;
 #[cfg(feature = "desktop")]
@@ -51,6 +53,7 @@ fn main() {
             let roaming = std::env::var_os("APPDATA").ok_or("APPDATA unavailable")?;
             let path = pingloom_core::settings::resolve_settings_path(roaming);
             custom_emotes::initialize(&path);
+            appearance::initialize(&path);
             app.manage(single_instance::acquire(
                 path.parent().ok_or("settings directory unavailable")?,
             )?);

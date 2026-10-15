@@ -44,10 +44,20 @@ on the existing rendering thread. This changes appearance intentionally, not the
 86-DIP cancellation radius, slice mapping, input handling, replay, window ownership
 or effect lifetime. Native Ping/Emote artwork and effects are unchanged.
 
-The native Wheel uses V7 Night for readable contrast over arbitrary desktops.
-Settings color-theme persistence remains renderer-only; this amendment does not
-introduce a theme IPC command, remote assets or a WebView overlay. Windows keeps
-its native dynamic selected-action caption below the Wheel. Acceptance requires
-native raster checks and the existing Windows smoke test; compile checks alone do
-not certify physical desktop behavior.
+Windows keeps its native dynamic selected-action caption below the Wheel.
+Acceptance requires native raster checks and the existing Windows smoke test;
+compile checks alone do not certify physical desktop behavior.
+
+## Amendment: native Wheel follows Settings appearance
+
+The user subsequently requested that the actual Ping/Emote Wheels change color
+with the selected Settings theme, superseding the initial fixed-Night behavior.
+A trusted-document/session-validated `set_appearance` command accepts only the six
+known palette IDs. Appearance applies immediately and persists atomically in a
+separate `appearance.json`, without saving or extending the gesture settings draft.
+The lifecycle lock serializes appearance writes with close/reopen; no input lock
+is held for persistence. Native renderers read an atomic palette ID and refresh
+cached surface/label colors when it changes, including on an already-open Wheel.
+This changes appearance only, not input authority, permissions, timing or replay.
+There are still no remote assets or overlay WebViews.
 See `docs/PLATFORMS.md` for prerequisites, architecture limits and physical acceptance.

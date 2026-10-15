@@ -290,6 +290,37 @@ pub(crate) async fn import_emote<R: Runtime>(
     Ok(result)
 }
 
+#[tauri::command(rename_all = "snake_case")]
+pub(crate) async fn set_appearance<R: Runtime>(
+    window: WebviewWindow<R>,
+    state: tauri::State<'_, Arc<DesktopSettingsState>>,
+    session_id: String,
+    theme: crate::appearance::Theme,
+) -> Result<(), Rejection> {
+    trusted(&window)?;
+    check_session(&state, &session_id)?;
+    let state = Arc::clone(state.inner());
+    tauri::async_runtime::spawn_blocking(move || {
+        // Serialize with close/reopen: an old session cannot recolor a newer one.
+        // This is the Settings lifecycle lock, never the native input/gesture lock.
+        let lifecycle = state
+            .lifecycle
+            .lock()
+            .map_err(|_| Rejection::from(OwnerError::unavailable("session unavailable")))?;
+        if lifecycle.accept_session(&session_id).is_none() {
+            return Err(Rejection {
+                code: "stale_session".into(),
+                message: "Settings session is no longer active".into(),
+                field: None,
+                request_id: None,
+            });
+        }
+        crate::appearance::set(theme).map_err(|e| Rejection::from(OwnerError::unavailable(e)))
+    })
+    .await
+    .map_err(|e| Rejection::from(OwnerError::unavailable(e.to_string())))?
+}
+
 static SESSION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
 fn check_session(state: &DesktopSettingsState, session: &str) -> Result<(), Rejection> {
@@ -676,7 +707,8 @@ pub(crate) fn install<R: tauri::Runtime>(
             get_settings_and_catalog,
             save_settings,
             close_settings,
-            settings_heartbeat
+            settings_heartbeat,
+            set_appearance
         ])
 }
 

@@ -12,7 +12,7 @@ People placing desktop pings and emotes independently of the game process. Setti
 ## Capabilities and constraints
 - Preserve native trigger-held gestures, eight slices, cancellation, input replay and per-display fullscreen pause.
 - Preserve embedded assets, animation/audio, settings schema/validation and safe persistence.
-- One Settings WebView, with Save/Close, keyboard navigation, field-directed errors, previews and no authority over validation or paths. Its persisted renderer-only color theme is immediate and never changes the native Settings draft or schema.
+- One Settings WebView, with Save/Close, keyboard navigation, field-directed errors, previews and no authority over validation or paths. Its color theme applies immediately to Settings and both native Wheels through a bounded, session-guarded appearance command. Native appearance persists separately in appearance.json and never changes the gesture Settings draft or schema.
 - Native overlay/tray behavior and existing improvements remain in Rust. Never replace the overlay with WebViews.
 - No sharing, updater or startup registration. Linux/macOS builds require native input permissions; Wayland gestures are unsupported. See `docs/PLATFORMS.md`.
 
