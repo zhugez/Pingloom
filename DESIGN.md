@@ -30,11 +30,18 @@ At compact desktop heights, the hero/demo and wheel scale down so the working su
 - Reduced motion removes decorative motion, keeps the wheel centred and reveals fields without smooth scrolling. Hidden-window animations pause. Keyboard focus, native radio/range/checkbox semantics and forced-colors fallbacks remain supported.
 
 ## Native boundary and persistence
-Drafts apply only on Save. Opening/closing Settings does not pause, cancel or resume native gestures. Native safety checks, permissions and manual Pause remain authoritative; status refreshes on the five-second heartbeat. The status indicator is display-only, not a pause button. No new IPC commands, dependencies, settings schema fields or native overlay changes.
+Drafts apply only on Save. Opening/closing Settings does not pause, cancel or resume native gestures. Native safety checks, permissions and manual Pause remain authoritative; status refreshes on the five-second heartbeat. The status indicator is display-only, not a pause button. No new IPC commands, dependencies or settings schema fields.
 
 Imports use the existing bounded native `import_emote` command. Artwork is stored immediately; assignment remains a draft. PNG/JPG/GIF/WebP limits, local library limits, asynchronous errors and Save/import exclusion remain intact. Picker images stay still; the native overlay owns animated playback and audio.
 
 Preserve the existing session/generation admission, owner-queue barriers, canonical Rust validation, atomic persistence and matching request IDs. Capability/CSP restrictions continue to allow only bundled Settings assets, not arbitrary paths or remote navigation.
+
+## Native V7 Wheel
+The actual native desktop Wheel now inherits V7 Night: separate dark hub, spaced wedges, compass labels/ticks, Blush selection arcs and subdued unselected art. This is not a WebView. Win32 and Unix renderers use the same `src/wheel.rs` surface, with geometry cached per open and only selection colors interpolated per frame. The bundled static label atlas uses Bricolage; rebuild it with `tools/render-wheel-labels.cjs` and Chromium. Rasterizing labels at open avoids resizing a full atlas every frame.
+
+The native Wheel deliberately stays Night over arbitrary desktop backgrounds; the Settings theme selector remains Settings-only. The 86-DIP cancellation zone, slice mapping, input/replay and Ping/Emote effect artwork/motion remain unchanged. Windows retains its selected-action caption below the Wheel. See the visual-only amendment to ADR 0002.
+
+`PINGLOOM_WHEEL_PREVIEW_DIR=/tmp/pingloom-v7-wheel cargo test --locked --release --bin pingloom native_v7_wheel_preview_at_display_scales -- --nocapture` renders real native Ping/Emote Wheels at 1x, 1.5x and 2x without OS input. `docs/media/pingloom-native-wheel-v7.png` shows that Unix raster output over a test background, not a physical desktop capture. Shared shape tests cover transparency, Blush arcs, slice mapping and the unchanged dead zone; a Windows canvas test checks the actual BGRA composition path on Windows CI.
 
 ## Verification boundary
 `npm --prefix ui run check`, `npm --prefix ui test`, `npm --prefix ui run build` and `node ui/tests/verify-ui.cjs --refresh-readme` cover frontend checks, settings helpers and browser rendering with mocked desktop IPC. Browser checks include all palettes/brand contrast, HiDPI, compact windows, local drag/fire/cancel, size preview, dirty/revert, import, Save/error focus, chrome routing, interruption, hidden-window and reduced-motion behavior. The refresh command copies current captures into `docs/media/`, including the README preview. Chromium and puppeteer-core are test-harness prerequisites, not production dependencies.
