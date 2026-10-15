@@ -164,6 +164,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             let path = app.path().config_dir()?.join("pingloom").join("settings.json");
             app.manage(crate::single_instance::acquire(path.parent().ok_or("settings directory unavailable")?)?);
             crate::custom_emotes::initialize(&path);
+            crate::appearance::initialize(&path);
             let (settings, warning) = match Settings::load(&path) {
                 Ok(settings) => (settings, None),
                 Err(error) => (Settings::default(), Some(format!("Could not load settings; existing file was preserved: {error}"))),

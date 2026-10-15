@@ -102,7 +102,6 @@ struct WheelFx {
     updated: Instant,
     caption_font: HFONT,
     caption_mask: Option<CaptionMask>,
-    labels: Option<RgbaImage>,
     surface: crate::wheel::Surface,
 }
 
@@ -351,7 +350,6 @@ impl Overlay {
             updated: Instant::now(),
             caption_font,
             caption_mask: unsafe { CaptionMask::new(self.dc, scale) },
-            labels: crate::wheel::labels(scale),
             surface: crate::wheel::Surface::new(scale),
         });
     }
@@ -521,6 +519,7 @@ impl Overlay {
                             .collect(),
                     ),
                 };
+                wheel.surface.refresh(wheel.scale);
                 canvas.draw_wheel(wheel, &items, &mut self.image_cache);
                 let selected = wheel
                     .hot
@@ -652,7 +651,8 @@ unsafe fn draw_wheel_caption(canvas: &mut Canvas<'_>, wheel: &mut WheelFx, selec
                 .max(*mask.pixels.add(index + 1))
                 .max(*mask.pixels.add(index + 2));
             if coverage != 0 {
-                canvas.point(left + x, top + y, [248, 248, 248, coverage]);
+                let ink = wheel.surface.theme.palette().ink;
+                canvas.point(left + x, top + y, [ink[0], ink[1], ink[2], coverage]);
             }
         }
     }
@@ -780,7 +780,7 @@ impl Canvas<'_> {
         wheel.surface.paint(&wheel.selection, |dx, dy, rgba| {
             self.point(wheel.origin.x + dx, wheel.origin.y + dy, rgba);
         });
-        if let Some(labels) = &wheel.labels {
+        if let Some(labels) = &wheel.surface.labels {
             let size = (crate::wheel::EXTENT * 2.0 * scale).round() as u32;
             self.image(
                 labels,
@@ -947,10 +947,9 @@ mod tests {
             updated: now,
             caption_font: null_mut(),
             caption_mask: None,
-            labels: crate::wheel::labels(1.0),
             surface: crate::wheel::Surface::new(1.0),
         };
-        assert!(wheel.labels.is_some());
+        assert!(wheel.surface.labels.is_some());
         canvas.draw_wheel(&wheel, &[], &mut HashMap::new());
         let pixel = |x: usize, y: usize| &canvas.pixels[(y * 500 + x) * 4..(y * 500 + x) * 4 + 4];
         assert_eq!(pixel(250, 156)[3], 0, "hub/wedge gap must stay transparent");

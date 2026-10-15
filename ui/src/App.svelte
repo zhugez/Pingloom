@@ -57,6 +57,25 @@
   let reducedMotion = $state(false);
   let demoStep = $state(2);
   const TRIGGERS = $derived.by(() => platformTriggers(boot?.platform));
+  let appearanceError = $state('');
+  let appearanceRevision = 0;
+  let appearanceQueue = Promise.resolve();
+  $effect(() => {
+    const session = boot?.session_id;
+    const theme = selectedTheme === 'default' ? `default-${resolvedThemeMode}` : selectedTheme;
+    if (!session || !sessionAlive) return;
+    const revision = ++appearanceRevision;
+    // Preserve ordering through rapid changes; an older disk write cannot win last.
+    appearanceQueue = appearanceQueue.then(async () => {
+      if (revision !== appearanceRevision) return;
+      try {
+        await invoke('set_appearance', { session_id: session, theme });
+        if (revision === appearanceRevision) appearanceError = '';
+      } catch (error) {
+        if (revision === appearanceRevision) appearanceError = `Could not sync the Wheel theme: ${messageOf(error)} Close and reopen Settings to retry.`;
+      }
+    });
+  });
   const pages = [
     { id: 'triggers' as const, label: 'Triggers', icon: Keyboard },
     { id: 'pings' as const, label: 'Tactical Pings', icon: Crosshair },
@@ -471,6 +490,7 @@
     </nav>
     <main class="desktop-body" id="settings-content">
       {#if loadError}<div class="notice-callout warning" role="status"><AlertCircle size={17} /><span>{loadError}</span></div>{/if}
+      {#if appearanceError}<div class="notice-callout warning" role="status"><AlertCircle size={17} /><span>{appearanceError}</span></div>{/if}
       <form bind:this={formEl} onsubmit={event => { event.preventDefault(); void save(); }}>
         {#if page === 'triggers'}
           <div role="tabpanel" id="panel-triggers" aria-labelledby="tab-triggers" tabindex="0" class="page-panel">

@@ -242,6 +242,16 @@ function findChrome() {
             window.__lastImportPrefix = args.data.slice(0, 4);
             return { id: 'custom_0000000000000001', name: 'Custom 000001', preview_url: window.__tauri_mock.catalog.emotes[0].preview_url };
           }
+          if (cmd === 'set_appearance') {
+            if (!['default-light', 'default-dark', 'latte', 'frappe', 'macchiato', 'mocha'].includes(args.theme) || args.session_id !== window.__tauri_mock.session_id) throw new Error('Invalid appearance command');
+            if (window.__rejectAppearance) { window.__rejectAppearance = false; throw new Error('Appearance storage unavailable'); }
+            if (window.__deferAppearance) {
+              window.__deferAppearance = false;
+              await new Promise(resolve => { window.__resumeAppearance = resolve; });
+            }
+            window.__nativeTheme = args.theme;
+            return null;
+          }
           if (cmd === 'settings_heartbeat') {
             window.__heartbeatCount = (window.__heartbeatCount || 0) + 1;
             return window.__tauri_mock.status;
@@ -377,6 +387,7 @@ function findChrome() {
     await checkBrand(page);
     await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'dark' }]);
     await page.waitForFunction(() => document.documentElement.dataset.themeMode === 'dark');
+    await page.waitForFunction(() => window.__nativeTheme === 'default-dark');
     await checkBrand(page);
     await page.click('#tab-pings');
     await capture(page, 'theme-sapphire-dark-960x720.png');
@@ -392,6 +403,7 @@ function findChrome() {
       if (actual.mode !== mode || actual.palette !== preset || actual.paper !== paper || actual.accent !== accent || actual.saved) {
         throw new Error(`Theme preset did not resolve canonically: ${preset} ${JSON.stringify(actual)}`);
       }
+      await page.waitForFunction(expected => window.__nativeTheme === expected, {}, preset);
       await checkBrand(page);
       await page.click('#tab-pings');
       await capture(page, `theme-${preset}-960x720.png`);
@@ -418,6 +430,27 @@ function findChrome() {
     await page.waitForFunction(() => document.documentElement.dataset.themeMode === 'dark');
     await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'light' }]);
     await page.waitForFunction(() => document.documentElement.dataset.themeMode === 'light');
+
+    // Native appearance follows OS defaults, explicit presets and rapid toggles without Save.
+    await page.waitForFunction(() => window.__nativeTheme === 'default-light');
+    await page.evaluate(() => { window.__deferAppearance = true; });
+    await page.select('#theme-preset', 'frappe');
+    await page.waitForFunction(() => typeof window.__resumeAppearance === 'function');
+    await page.evaluate(() => {
+      const select = document.querySelector('#theme-preset');
+      for (const value of ['frappe', 'latte', 'mocha']) {
+        select.value = value;
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    });
+    await page.evaluate(() => window.__resumeAppearance());
+    await page.waitForFunction(() => window.__nativeTheme === 'mocha');
+    if (await page.evaluate(() => window.__savedCandidate)) throw new Error('Appearance changes saved the gesture draft');
+    await page.evaluate(() => { window.__rejectAppearance = true; });
+    await page.select('#theme-preset', 'latte');
+    await page.waitForFunction(() => document.querySelector('.notice-callout.warning')?.textContent.includes('Could not sync the Wheel theme'));
+    await page.select('#theme-preset', 'default');
+    await page.waitForFunction(() => window.__nativeTheme === 'default-light' && !document.querySelector('.notice-callout.warning'));
 
     // Capture Triggers screenshot (960x720)
     await capture(page, '01-triggers-960x720.png');

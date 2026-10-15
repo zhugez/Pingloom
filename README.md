@@ -37,7 +37,7 @@ Native Rust owns latency-sensitive low-level keyboard/mouse hooks, input replay,
 - **Game-independent communication**: Summon tactical wheel pings (Danger, On My Way, Assist Me, Need Vision, etc.) and animated emotes on supported desktop sessions.
 - **Zero game hooking**: Operates entirely outside game processes via native OS input APIs; no game-process injection.
 - **Native execution architecture**: All gesture recognition, wheel hit-testing, and transparent overlay drawing run directly in compiled native Rust (architectural design, not an empirical latency benchmark).
-- **Native V7 Wheel**: Spaced Night wedges, a separate cancellation hub, Blush selection arcs and compass ticks/labels on the actual desktop overlay. Input behavior and Ping/Emote artwork stay unchanged. The native Wheel stays Night; Settings themes affect Settings only.
+- **Native V7 Wheel**: Spaced wedges, a separate cancellation hub, theme-colored selection arcs and compass ticks/labels on the actual desktop overlay. Both Ping and Emote Wheels follow the Settings color theme immediately, including light/dark mode and all Catppuccin presets. Input behavior and Ping/Emote artwork stay unchanged.
 - **Theme-aware Settings**: Pingloom Blush light/dark and Catppuccin Latte, Frappé, Macchiato and Mocha. Floating titlebar/navigation, double-bezel surfaces, a local drag-test wheel, persistent Save controls and responsive layouts. The ribbon-woven P uses the theme foreground in Settings; desktop icons use a fixed high-contrast plate. See [design details](DESIGN.md).
 
 ---
@@ -73,7 +73,7 @@ The Settings window provides complete customization across three focused pages:
 
 ### Current UI
 
-Use the **Color theme** selector in the titlebar and the adjacent light/dark toggle (Pingloom Blush or Catppuccin Latte / Frappé / Macchiato / Mocha). Appearance is saved locally immediately, independently of gesture configuration Save.
+Use the **Color theme** selector in the titlebar and the adjacent light/dark toggle (Pingloom Blush or Catppuccin Latte / Frappé / Macchiato / Mocha). Appearance is saved locally immediately, independently of gesture configuration Save. The native Ping and Emote Wheels follow the same theme, even while open; their palette is restored from `appearance.json` next to `settings.json` when the app restarts.
 
 Select a wheel slice, then choose an image from the visual catalog alongside it. Drag the test wheel and release to preview locally; release in its centre to cancel. Preview sounds are synthesized, not the bundled clips. Full dropdown assignments remain under **All 8 assignments**. Emotes includes custom PNG/JPG/GIF/WebP import.
 
