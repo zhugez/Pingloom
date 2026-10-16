@@ -41,6 +41,7 @@ pub(crate) type StatusReply = mpsc::Receiver<Result<RuntimeStatus, OwnerError>>;
 
 pub(crate) enum OwnerRequest {
     Query(mpsc::Sender<Result<QueryResult, OwnerError>>),
+    Status(mpsc::Sender<Result<RuntimeStatus, OwnerError>>),
     // Orders Settings lifecycle transitions after accepted saves without touching input.
     Barrier(mpsc::Sender<Result<(), OwnerError>>),
     Save(
@@ -69,7 +70,7 @@ impl OwnerMailbox {
             PostMessageW(hwnd as HWND, WM_OWNER_REQUEST, 0, 0) != 0
         });
         #[cfg(not(windows))]
-        let mailbox = Self::with_wake(|_| true);
+        let mailbox = Self::with_wake(|_| crate::desktop::wake_owner());
         mailbox
     }
 
@@ -142,6 +143,11 @@ impl OwnerMailbox {
         self.enqueue(OwnerRequest::Query(tx))?;
         Ok(rx)
     }
+    pub(crate) fn status(self: &Arc<Self>) -> Result<StatusReply, OwnerError> {
+        let (tx, rx) = mpsc::channel();
+        self.enqueue(OwnerRequest::Status(tx))?;
+        Ok(rx)
+    }
     pub(crate) fn barrier(
         self: &Arc<Self>,
     ) -> Result<mpsc::Receiver<Result<(), OwnerError>>, OwnerError> {
@@ -169,7 +175,7 @@ fn reject_request(request: OwnerRequest, message: &str) {
         OwnerRequest::Query(tx) => {
             let _ = tx.send(Err(error()));
         }
-        OwnerRequest::Save(_, tx) => {
+        OwnerRequest::Status(tx) | OwnerRequest::Save(_, tx) => {
             let _ = tx.send(Err(error()));
         }
         OwnerRequest::Barrier(tx) | OwnerRequest::Quit(tx) => {

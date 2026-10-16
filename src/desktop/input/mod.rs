@@ -11,6 +11,10 @@ use linux as platform;
 #[cfg(target_os = "macos")]
 use macos as platform;
 
+pub(super) fn stop() {
+    #[cfg(target_os = "macos")]
+    macos::stop();
+}
 pub(super) fn run(shared: Arc<Shared>) -> Result<(), String> {
     platform::run(shared)
 }

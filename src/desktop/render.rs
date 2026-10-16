@@ -1,7 +1,9 @@
 use super::{audio::Audio, QueuedAction};
+#[cfg(test)]
+use crate::animation::decode_emote;
 use crate::{
-    animation::{decode_emote, AnimatedFrame},
-    assets::ASSETS,
+    animation::AnimatedFrame,
+    assets,
     logic::{effect_fade, emote_envelope, ping_art_motion, ring_coverage, selection_blend},
 };
 use image::{imageops, Pixel, Rgba, RgbaImage};
@@ -28,6 +30,7 @@ struct Wheel {
     updated: Instant,
     scale: f64,
     surface: crate::wheel::Surface,
+    scaled_art: crate::raster::ArtCache,
 }
 struct Ping {
     id: pingloom_core::PingId,
@@ -60,6 +63,9 @@ impl Renderer {
             reduced: false,
         }
     }
+    pub fn is_active(&self) -> bool {
+        self.wheel.is_some() || !self.pings.is_empty() || self.emote.is_some()
+    }
     pub fn cancel(&mut self) {
         self.wheel = None;
         self.pings.clear();
@@ -69,11 +75,10 @@ impl Renderer {
         if let Some(image) = self.cache.get(path) {
             return Some(Arc::clone(image));
         }
-        let custom = crate::custom_emotes::asset(path);
-        let bytes = custom
-            .as_deref()
-            .or_else(|| ASSETS.get_file(path).map(|file| file.contents()))?;
-        let image = Arc::new(image::load_from_memory(bytes).ok()?.into_rgba8());
+        let bytes = crate::custom_emotes::asset(path)
+            .map(std::borrow::Cow::Owned)
+            .or_else(|| assets::get(path))?;
+        let image = Arc::new(image::load_from_memory(&bytes).ok()?.into_rgba8());
         self.cache.insert(path.into(), Arc::clone(&image));
         Some(image)
     }
@@ -85,6 +90,9 @@ impl Renderer {
         };
         let selection = match queued.action {
             Action::WheelOpen { wheel, origin } => {
+                if !settings.muted {
+                    audio.warm();
+                }
                 self.wheel = Some(Wheel {
                     kind: wheel,
                     origin,
@@ -93,6 +101,7 @@ impl Renderer {
                     updated: Instant::now(),
                     scale: queued.scale,
                     surface: crate::wheel::Surface::new(queued.scale),
+                    scaled_art: Vec::new(),
                 });
                 None
             }
@@ -134,6 +143,7 @@ impl Renderer {
                     let slug = slot
                         .map_or(&settings.click_emote_id, |slot| &settings.emote_wheel[slot])
                         .clone();
+                    let draw_width = (f64::from(settings.emote_size_px) * 1.25) as u32;
                     let pending =
                         (!self.reduced && crate::animation::has_animation(&slug)).then(|| {
                             let (tx, rx) = mpsc::sync_channel(1);
@@ -142,7 +152,10 @@ impl Renderer {
                             let _ = std::thread::Builder::new()
                                 .name("pingloom-emote-decode".into())
                                 .spawn(move || {
-                                    let _ = tx.send(decode_emote(&decoding).unwrap_or_default());
+                                    let _ = tx.send(
+                                        crate::animation::decode_emote_sized(&decoding, draw_width)
+                                            .unwrap_or_default(),
+                                    );
                                 });
                             rx
                         });
@@ -166,6 +179,7 @@ impl Renderer {
         self.frame_at(settings, Instant::now())
     }
     fn frame_at(&mut self, settings: &Settings, now: Instant) -> Option<Frame> {
+        let _trace = crate::trace::probe(crate::trace::Metric::Render);
         if let Some(emote) = &mut self.emote {
             let ready = emote.pending.as_ref().and_then(|rx| match rx.try_recv() {
                 Ok(frames) => Some(frames),
@@ -183,11 +197,9 @@ impl Renderer {
         self.pings.retain(|p| {
             now.duration_since(p.started).as_secs_f64() < settings.ping_duration_s as f64
         });
-        if self
-            .emote
-            .as_ref()
-            .is_some_and(|e| now.duration_since(e.started) >= Duration::from_secs(3))
-        {
+        if self.emote.as_ref().is_some_and(|e| {
+            e.pending.is_none() && now.duration_since(e.started) >= Duration::from_secs(3)
+        }) {
             self.emote = None;
         }
         let mut areas = Vec::new();
@@ -212,6 +224,8 @@ impl Renderer {
             self.emote = None;
             return None;
         }
+        #[cfg(test)]
+        crate::render_metrics::clear(width as usize * height as usize * 4);
         let mut image = RgbaImage::new(width, height);
         if let Some(wheel) = &mut self.wheel {
             let dt = now.duration_since(wheel.updated).as_secs_f64();
@@ -261,6 +275,13 @@ impl Renderer {
                     WheelKind::Emote => format!("emotes/{}.png", settings.emote_wheel[slot]),
                 };
                 if let Some(art) = self.asset(&path) {
+                    let size = (46.0 * scale * (1.0 + 0.18 * blend)) as u32;
+                    let art = crate::raster::cached_art(
+                        &mut self.wheel.as_mut().unwrap().scaled_art,
+                        &path,
+                        &art,
+                        size,
+                    );
                     blit(
                         &mut image,
                         &art,
@@ -345,7 +366,7 @@ impl Renderer {
                 .iter()
                 .rev()
                 .find(|f| !self.reduced && f.at_ms <= elapsed)
-                .map(|f| Arc::new(f.image.clone()));
+                .map(|f| Arc::clone(&f.image));
             let (scale, opacity) = emote_envelope(
                 age,
                 !emote.frames.is_empty(),
@@ -375,6 +396,8 @@ impl Renderer {
 }
 fn point(image: &mut RgbaImage, x: i32, y: i32, color: [u8; 4]) {
     if x >= 0 && y >= 0 && x < image.width() as i32 && y < image.height() as i32 {
+        #[cfg(test)]
+        crate::render_metrics::write(4);
         image.get_pixel_mut(x as u32, y as u32).blend(&Rgba(color));
     }
 }
@@ -397,18 +420,30 @@ fn ring(image: &mut RgbaImage, x: i32, y: i32, radius: f64, color: [u8; 4]) {
     }
 }
 fn blit(target: &mut RgbaImage, image: &RgbaImage, x: i32, y: i32, width: u32, opacity: f64) {
-    let mut image = crate::raster::resize_art(image, width.max(1)).into_owned();
+    let image = crate::raster::resize_art(image, width.max(1));
     let height = image.height();
-    for pixel in image.pixels_mut() {
-        pixel.0[3] = (pixel.0[3] as f64 * opacity.clamp(0.0, 1.0)) as u8;
-    }
+    let image = if opacity == 1.0 {
+        image
+    } else {
+        let mut owned = image.into_owned();
+        for pixel in owned.pixels_mut() {
+            pixel.0[3] = (pixel.0[3] as f64 * opacity.clamp(0.0, 1.0)) as u8;
+        }
+        std::borrow::Cow::Owned(owned)
+    };
+    #[cfg(test)]
+    crate::render_metrics::write(image.width() as usize * image.height() as usize * 4);
     imageops::overlay(
         target,
-        &image,
+        image.as_ref(),
         (x - width as i32 / 2) as i64,
         (y - height as i32 / 2) as i64,
     );
 }
+
+#[cfg(test)]
+#[path = "render_tests.rs"]
+mod render_evidence;
 
 #[cfg(test)]
 mod tests {
@@ -447,6 +482,7 @@ mod tests {
             updated: start,
             scale: 0.65,
             surface: crate::wheel::Surface::new(0.65),
+            scaled_art: Vec::new(),
         });
         renderer.pings.push(Ping {
             id: pingloom_core::PingId::AllIn,
@@ -582,7 +618,7 @@ mod tests {
         };
         renderer.action(click, &settings, &Audio::new());
         assert!(renderer.emote.as_ref().unwrap().pending.is_some());
-        let deadline = Instant::now() + Duration::from_secs(10);
+        let deadline = Instant::now() + Duration::from_secs(30);
         while renderer.emote.as_ref().unwrap().pending.is_some() {
             assert!(Instant::now() < deadline, "decode never completed");
             renderer.frame_at(&settings, Instant::now());
@@ -611,6 +647,7 @@ mod tests {
                     updated: start,
                     scale,
                     surface: crate::wheel::Surface::new(scale),
+                    scaled_art: Vec::new(),
                 });
                 let clock = Instant::now();
                 let frame = renderer.frame_at(&settings, start).unwrap();

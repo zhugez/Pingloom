@@ -1,21 +1,21 @@
 //! Bounded, shared decoding for bundled WebP and custom desktop emotes.
-use crate::assets::ASSETS;
+use crate::assets;
 use image::{AnimationDecoder, ImageDecoder, ImageFormat, ImageReader, Limits, RgbaImage};
-use std::io::Cursor;
+use std::{io::Cursor, sync::Arc};
 use webp_animation::Decoder;
 
 #[derive(Clone)]
 pub(crate) struct AnimatedFrame {
     pub at_ms: u32,
     pub end_ms: u32,
-    pub image: RgbaImage,
+    pub image: Arc<RgbaImage>,
 }
 
 pub(crate) fn has_animation(slug: &str) -> bool {
     if pingloom_core::settings::is_custom_emote(slug) {
         crate::custom_emotes::animated(slug)
     } else {
-        ASSETS.get_file(format!("emotes/{slug}.webp")).is_some()
+        assets::get(format!("emotes/{slug}.webp")).is_some()
     }
 }
 
@@ -25,11 +25,29 @@ pub(crate) fn decode_emote(slug: &str) -> Option<Vec<AnimatedFrame>> {
         let frames = decode_media(&bytes, false).ok()?;
         return (frames.len() > 1).then(|| fit_custom(frames));
     }
-    decode_media(
-        ASSETS.get_file(format!("emotes/{slug}.webp"))?.contents(),
-        false,
-    )
-    .ok()
+    decode_media(&assets::get(format!("emotes/{slug}.webp"))?, false).ok()
+}
+
+/// Decode/resize off the owner thread; never upscale or retain a decoded-frame cache.
+pub(crate) fn decode_emote_sized(slug: &str, width: u32) -> Option<Vec<AnimatedFrame>> {
+    let mut frames = decode_emote(slug)?;
+    let workers = std::thread::available_parallelism()
+        .map_or(1, |n| n.get())
+        .min(4);
+    let chunk = frames.len().div_ceil(workers).max(1);
+    std::thread::scope(|scope| {
+        for frames in frames.chunks_mut(chunk) {
+            scope.spawn(move || {
+                for frame in frames {
+                    if width > 0 && width < frame.image.width() {
+                        frame.image =
+                            Arc::new(crate::raster::resize_art(&frame.image, width).into_owned());
+                    }
+                }
+            });
+        }
+    });
+    Some(frames)
 }
 
 fn limits() -> Limits {
@@ -73,7 +91,7 @@ fn push(
     frames.push(AnimatedFrame {
         at_ms,
         end_ms,
-        image,
+        image: Arc::new(image),
     });
     Ok(())
 }
@@ -115,15 +133,13 @@ pub(crate) fn decode_media(bytes: &[u8], first_only: bool) -> Result<Vec<Animate
             let decoder = Decoder::new(bytes).map_err(|e| e.to_string())?;
             dimensions(decoder.dimensions().0, decoder.dimensions().1)?;
             for frame in decoder {
-                let (width, height) = frame.dimensions();
-                let image = RgbaImage::from_raw(width, height, frame.data().to_vec())
-                    .ok_or("Invalid WebP frame")?;
                 // A static WebP can have an unspecified zero timestamp.
                 let end = (frame.timestamp().max(0) as u32).max(
                     frames
                         .last()
                         .map_or(1, |f: &AnimatedFrame| f.end_ms.saturating_add(1)),
                 );
+                let image = frame.into_rgba_image().map_err(|e| e.to_string())?;
                 push(&mut frames, image, end, &mut decoded_bytes)?;
                 if first_only {
                     break;
@@ -147,12 +163,14 @@ pub(crate) fn fit_custom(frames: Vec<AnimatedFrame>) -> Vec<AnimatedFrame> {
         .into_iter()
         .map(|mut frame| {
             let scale = (512.0 / frame.image.width().max(frame.image.height()) as f32).min(1.0);
-            frame.image = crate::raster::resize_art_to(
-                &frame.image,
-                (frame.image.width() as f32 * scale).round().max(1.0) as u32,
-                (frame.image.height() as f32 * scale).round().max(1.0) as u32,
-            )
-            .into_owned();
+            frame.image = Arc::new(
+                crate::raster::resize_art_to(
+                    &frame.image,
+                    (frame.image.width() as f32 * scale).round().max(1.0) as u32,
+                    (frame.image.height() as f32 * scale).round().max(1.0) as u32,
+                )
+                .into_owned(),
+            );
             frame
         })
         .collect()
@@ -170,18 +188,42 @@ pub(crate) fn playback_ms(slug: &str, frames: &[AnimatedFrame], elapsed: u32) ->
 mod tests {
     use super::*;
 
+    #[test]
+    fn worker_sizing_preserves_resampling_and_shared_frame_storage() {
+        let full = decode_emote("facepalm").unwrap();
+        let sized = decode_emote_sized("facepalm", 187).unwrap();
+        assert_eq!(full.len(), sized.len());
+        for (a, b) in full.iter().zip(&sized) {
+            assert_eq!((a.at_ms, a.end_ms), (b.at_ms, b.end_ms));
+            assert_eq!(
+                crate::raster::resize_art(&a.image, 187).as_ref(),
+                b.image.as_ref()
+            );
+        }
+        assert!(
+            sized.iter().map(|f| f.image.as_raw().len()).sum::<usize>()
+                < full.iter().map(|f| f.image.as_raw().len()).sum::<usize>() / 2
+        );
+        let cloned = sized[0].clone();
+        assert!(Arc::ptr_eq(&cloned.image, &sized[0].image));
+        assert_eq!(
+            decode_emote_sized("facepalm", 1024).unwrap()[0]
+                .image
+                .dimensions(),
+            full[0].image.dimensions()
+        );
+    }
+
     /// Release decode benchmark read by `tools/perf_gate.py`:
     /// `cargo nextest run --release --run-ignored only -E 'test(decode_benchmark)'`.
     #[test]
     #[ignore]
     fn decode_benchmark() {
-        let mut ms: Vec<f64> = ASSETS
-            .get_dir("emotes")
-            .unwrap()
-            .files()
-            .filter(|file| file.path().extension().is_some_and(|ext| ext == "webp"))
+        let mut ms: Vec<f64> = assets::files("emotes")
+            .iter()
+            .filter(|file| file.extension().is_some_and(|ext| ext == "webp"))
             .map(|file| {
-                let slug = file.path().file_stem().unwrap().to_str().unwrap();
+                let slug = file.file_stem().unwrap().to_str().unwrap();
                 let start = std::time::Instant::now();
                 assert!(decode_emote(slug).unwrap().len() > 1);
                 start.elapsed().as_secs_f64() * 1000.0

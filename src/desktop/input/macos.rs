@@ -31,6 +31,16 @@ const MARKER: i64 = 0x50494e474c4f4f4d;
 const PERMISSION: &str = "Allow Pingloom in System Settings → Privacy & Security → Accessibility. Gestures start automatically once access is granted.";
 /// The live tap, so its own callback can re-enable it after a macOS timeout.
 static TAP: AtomicPtr<std::ffi::c_void> = AtomicPtr::new(std::ptr::null_mut());
+static RUN_LOOP: std::sync::Mutex<usize> = std::sync::Mutex::new(0);
+pub(super) fn stop() {
+    if let Ok(loop_ptr) = RUN_LOOP.lock() {
+        if *loop_ptr != 0 {
+            unsafe {
+                CFRunLoopStop(*loop_ptr as *mut std::ffi::c_void);
+            }
+        }
+    }
+}
 const KEYS: &[(u8, u16)] = &[
     (0x41, 0),
     (0x53, 1),
@@ -137,6 +147,7 @@ unsafe extern "C" {
     fn AXIsProcessTrusted() -> bool;
     fn AXIsProcessTrustedWithOptions(options: CFDictionaryRef) -> bool;
     fn CGEventTapEnable(tap: CFMachPortRef, enable: bool);
+    fn CFRunLoopStop(run_loop: *mut std::ffi::c_void);
     fn CGRectMakeWithDictionaryRepresentation(
         dictionary: CFDictionaryRef,
         rect: *mut CGRect,
@@ -281,6 +292,7 @@ pub(super) fn run(shared: Arc<Shared>) -> Result<(), String> {
         }
         if matches!(kind,CGEventType::TapDisabledByUserInput){callback.fail("macOS disabled the input event tap. Gestures paused; restart Pingloom after checking Accessibility/Input Monitoring.".into());return CallbackResult::Keep;}
         if event.get_integer_value_field(EventField::EVENT_SOURCE_USER_DATA)==MARKER || event.get_integer_value_field(EventField::EVENT_SOURCE_UNIX_PROCESS_ID)>0{return CallbackResult::Keep;}
+        if matches!(kind,CGEventType::MouseMoved) && !callback.gesture_busy.load(Ordering::Acquire) {return CallbackResult::Keep;}
         let location=event.location();let point=Point::new(location.x.round() as i32,location.y.round() as i32);let time_ms=callback.time_ms();
         let native=match kind{
             CGEventType::KeyDown|CGEventType::KeyUp=>Some(if matches!(kind,CGEventType::KeyDown){InputEvent::KeyDown{vk:vk(event.get_integer_value_field(EventField::KEYBOARD_EVENT_KEYCODE) as u16),injected:false}}else{InputEvent::KeyUp{vk:vk(event.get_integer_value_field(EventField::KEYBOARD_EVENT_KEYCODE) as u16),injected:false}}),
@@ -289,7 +301,7 @@ pub(super) fn run(shared: Arc<Shared>) -> Result<(), String> {
                 crate::logic::macos_modifier_down(code,event.get_flags().bits()).map(|down|if down{InputEvent::KeyDown{vk:vk(code),injected:false}}else{InputEvent::KeyUp{vk:vk(code),injected:false}})
             }
             CGEventType::MouseMoved|CGEventType::LeftMouseDragged|CGEventType::RightMouseDragged|CGEventType::OtherMouseDragged=>Some(InputEvent::PointerMove{point,time_ms,injected:false}),
-            _=>button(kind,event).map(|(button,down)|if down{callback.resync(false,key_down);InputEvent::PointerDown{button,point,time_ms,injected:false,fullscreen_app:fullscreen_at(point),dpi_scale:callback.scale_at(point)}}else{InputEvent::PointerUp{button,point,time_ms,injected:false}}),
+            _=>button(kind,event).map(|(button,down)|if down{callback.resync(false,key_down);InputEvent::PointerDown{button,point,time_ms,injected:false,fullscreen_app:callback.needs_fullscreen_probe(button)&&fullscreen_at(point),dpi_scale:callback.scale_at(point)}}else{InputEvent::PointerUp{button,point,time_ms,injected:false}}),
         };
         if native.is_some_and(|native|callback.input(native)){CallbackResult::Drop}else{CallbackResult::Keep}
     }).map_err(|_|"Allow Pingloom in System Settings → Privacy & Security → Accessibility and Input Monitoring, then quit and reopen the app. Native gestures are paused until permissions are available.".to_string())?;
@@ -304,21 +316,33 @@ pub(super) fn run(shared: Arc<Shared>) -> Result<(), String> {
     );
     tap.enable();
     shared.ready();
+    let run_loop = CFRunLoop::get_current();
+    *RUN_LOOP.lock().unwrap() = run_loop.as_concrete_TypeRef() as usize;
     while shared.running.load(Ordering::Acquire) {
         CFRunLoop::run_in_mode(
             unsafe { kCFRunLoopDefaultMode },
-            Duration::from_millis(100),
+            Duration::from_secs(3600),
             true,
         );
     }
+    *RUN_LOOP.lock().unwrap() = 0;
     TAP.store(std::ptr::null_mut(), Ordering::Release);
     Ok(())
 }
+thread_local! {static REPLAY_SOURCE: std::cell::RefCell<Option<CGEventSource>>=const{std::cell::RefCell::new(None)};}
 pub(super) fn replay(input: ReplayInput) -> Result<(), ()> {
     if !unsafe { AXIsProcessTrusted() } {
         return Err(());
     }
-    let source = CGEventSource::new(CGEventSourceStateID::CombinedSessionState)?;
+    let source = REPLAY_SOURCE.with(|slot| {
+        let mut source = slot.borrow_mut();
+        if source.is_none() {
+            *source = Some(CGEventSource::new(
+                CGEventSourceStateID::CombinedSessionState,
+            )?);
+        }
+        Ok::<_, ()>(source.as_ref().unwrap().clone())
+    })?;
     let event = match input {
         ReplayInput::KeyDown(vk) => CGEvent::new_keyboard_event(source, code(vk).ok_or(())?, true)?,
         ReplayInput::KeyUp(vk) => CGEvent::new_keyboard_event(source, code(vk).ok_or(())?, false)?,

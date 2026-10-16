@@ -26,7 +26,8 @@ fn directory() -> Result<&'static Path, String> {
         .ok_or_else(|| "Emote library is unavailable".into())
 }
 fn read_file(directory: &Path, id: &str, extension: &str) -> Option<Vec<u8>> {
-    if !pingloom_core::settings::is_custom_emote(id) || !["png", "gif", "webp"].contains(&extension)
+    if !pingloom_core::settings::is_custom_emote(id)
+        || !["png", "gif", "webp", "thumb.png"].contains(&extension)
     {
         return None;
     }
@@ -65,8 +66,7 @@ fn thumbnail(bytes: &[u8], extension: &str) -> Option<Vec<u8>> {
 }
 pub(crate) fn asset(path: &str) -> Option<Vec<u8>> {
     let id = path.strip_prefix("emotes/")?.strip_suffix(".png")?;
-    let (bytes, ext) = media(id)?;
-    thumbnail(&bytes, ext)
+    cached_thumbnail(directory().ok()?, id)
 }
 pub(crate) fn animated(id: &str) -> bool {
     if !pingloom_core::settings::is_custom_emote(id) {
@@ -77,8 +77,55 @@ pub(crate) fn animated(id: &str) -> bool {
         fs::symlink_metadata(dir.join(format!("{id}.{ext}"))).is_ok_and(|m| m.file_type().is_file())
     })
 }
+fn exists_in(directory: &Path, id: &str) -> bool {
+    pingloom_core::settings::is_custom_emote(id)
+        && ["png", "gif", "webp"].into_iter().any(|ext| {
+            fs::symlink_metadata(directory.join(format!("{id}.{ext}"))).is_ok_and(|m| {
+                m.file_type().is_file() && m.len() > 0 && m.len() <= MAX_INPUT_BYTES as u64
+            })
+        })
+}
 pub(crate) fn exists(id: &str) -> bool {
-    media(id).is_some()
+    directory().is_ok_and(|dir| exists_in(dir, id))
+}
+
+fn cached_thumbnail(directory: &Path, id: &str) -> Option<Vec<u8>> {
+    if !exists_in(directory, id) {
+        return None;
+    }
+    let extension = ["png", "gif", "webp"].into_iter().find(|ext| {
+        fs::symlink_metadata(directory.join(format!("{id}.{ext}"))).is_ok_and(|m| {
+            m.file_type().is_file() && m.len() > 0 && m.len() <= MAX_INPUT_BYTES as u64
+        })
+    })?;
+    if extension == "png" {
+        return read_file(directory, id, "png");
+    }
+    let source = directory.join(format!("{id}.{extension}"));
+    let sidecar = directory.join(format!("{id}.thumb.png"));
+    let source_time = fs::symlink_metadata(&source).ok()?.modified().ok()?;
+    if fs::symlink_metadata(&sidecar)
+        .ok()
+        .filter(|m| m.file_type().is_file())
+        .and_then(|m| m.modified().ok())
+        .is_some_and(|t| t >= source_time)
+    {
+        if let Some(bytes) = read_file(directory, id, "thumb.png") {
+            return Some(bytes);
+        }
+    }
+    let bytes = thumbnail(&read_file(directory, id, extension)?, extension)?;
+    // Read-only libraries still work; failure to cache never discards the imported media.
+    let _ = write_thumbnail(directory, id, &bytes);
+    Some(bytes)
+}
+fn write_thumbnail(directory: &Path, id: &str, bytes: &[u8]) -> Result<(), String> {
+    let mut file = tempfile::NamedTempFile::new_in(directory).map_err(|e| e.to_string())?;
+    file.write_all(bytes).map_err(|e| e.to_string())?;
+    file.as_file().sync_all().map_err(|e| e.to_string())?;
+    file.persist(directory.join(format!("{id}.thumb.png")))
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }
 fn ids(directory: &Path) -> Vec<String> {
     let mut ids: Vec<_> = fs::read_dir(directory)
@@ -107,8 +154,8 @@ pub(crate) fn catalog() -> Vec<(String, Vec<u8>)> {
     ids(dir)
         .into_iter()
         .filter_map(|id| {
-            let (bytes, ext) = stored(dir, &id)?;
-            Some((id, thumbnail(&bytes, ext)?))
+            let bytes = cached_thumbnail(dir, &id)?;
+            Some((id, bytes))
         })
         .collect()
 }
@@ -125,6 +172,17 @@ fn import_into(directory: &Path, bytes: &[u8]) -> Result<String, String> {
     let format = crate::animation::format(bytes)?;
     // Fully validate every frame before any write, not just the thumbnail.
     let frames = crate::animation::decode_media(bytes, false)?;
+    let thumb = if matches!(format, ImageFormat::Gif | ImageFormat::WebP) {
+        let first = crate::animation::fit_custom(vec![frames[0].clone()]);
+        let mut output = Cursor::new(Vec::new());
+        first[0]
+            .image
+            .write_to(&mut output, ImageFormat::Png)
+            .map_err(|e| e.to_string())?;
+        Some(output.into_inner())
+    } else {
+        None
+    };
     let (output, extension) = if matches!(format, ImageFormat::Gif | ImageFormat::WebP) {
         // Preserve original compression, GIF disposal, alpha, timing and WebP quality.
         (
@@ -174,12 +232,45 @@ fn import_into(directory: &Path, bytes: &[u8]) -> Result<String, String> {
     let id = format!("custom_{stamp:016x}");
     file.persist_noclobber(directory.join(format!("{id}.{extension}")))
         .map_err(|e| e.to_string())?;
+    if let Some(thumb) = thumb {
+        let _ = write_thumbnail(directory, &id, &thumb);
+    }
     Ok(id)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn metadata_exists_and_thumbnail_cache_keep_ids_and_limits_safe() {
+        let dir = tempfile::tempdir().unwrap();
+        let id = "custom_0000000000000001";
+        assert!(!exists_in(dir.path(), id));
+        let path = dir.path().join(format!("{id}.png"));
+        fs::write(&path, []).unwrap();
+        assert!(!exists_in(dir.path(), id));
+        fs::write(&path, b"one").unwrap();
+        assert_eq!(exists_in(dir.path(), id), stored(dir.path(), id).is_some());
+        fs::OpenOptions::new()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_len(MAX_INPUT_BYTES as u64 + 1)
+            .unwrap();
+        assert!(!exists_in(dir.path(), id));
+        fs::remove_file(&path).unwrap();
+        let source = crate::assets::get("emotes/facepalm.webp").unwrap();
+        let id = import_into(dir.path(), &source).unwrap();
+        let thumb = dir.path().join(format!("{id}.thumb.png"));
+        assert!(thumb.is_file());
+        let first = cached_thumbnail(dir.path(), &id).unwrap();
+        let stamp = fs::metadata(&thumb).unwrap().modified().unwrap();
+        assert_eq!(first, cached_thumbnail(dir.path(), &id).unwrap());
+        assert_eq!(stamp, fs::metadata(&thumb).unwrap().modified().unwrap());
+        assert_eq!(ids(dir.path()), vec![id]);
+        assert!(cached_thumbnail(dir.path(), "../../settings").is_none());
+    }
+
     #[test]
     fn imported_png_is_bounded_persistent_deduplicated_and_path_safe() {
         let dir = tempfile::tempdir().unwrap();
@@ -256,12 +347,9 @@ mod tests {
             image::guess_format(&thumbnail(&restored, ext).unwrap()).unwrap(),
             ImageFormat::Png
         );
-        let webp = crate::assets::ASSETS
-            .get_file("emotes/facepalm.webp")
-            .unwrap()
-            .contents();
-        let id = import_into(dir.path(), webp).unwrap();
-        assert_eq!(stored(dir.path(), &id).unwrap().0, webp);
+        let webp = crate::assets::get("emotes/facepalm.webp").unwrap();
+        let id = import_into(dir.path(), &webp).unwrap();
+        assert_eq!(stored(dir.path(), &id).unwrap().0, webp.as_ref());
         let mut jpg = Cursor::new(Vec::new());
         image::RgbImage::new(3, 2)
             .write_to(&mut jpg, ImageFormat::Jpeg)

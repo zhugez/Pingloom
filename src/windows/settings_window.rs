@@ -41,7 +41,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     WS_EX_CONTROLPARENT, WS_GROUP, WS_OVERLAPPEDWINDOW, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
 };
 
-use super::assets::ASSETS;
+use super::assets;
 use super::{queue_main_message, APP_SETTINGS_CLOSED, APP_SETTINGS_MESSAGE};
 use windows_sys::Win32::Graphics::Gdi::{
     GetMonitorInfoW, InvalidateRect, MapWindowPoints, MonitorFromPoint, MonitorFromWindow,
@@ -1753,7 +1753,7 @@ impl SettingsWindow {
         if let Some(image) = self.preview_cache.get(path) {
             return Some(Arc::clone(image));
         }
-        let image = image::load_from_memory(ASSETS.get_file(path)?.contents())
+        let image = image::load_from_memory(&assets::get(path)?)
             .ok()?
             .into_rgba8();
         let image = Arc::new(image);

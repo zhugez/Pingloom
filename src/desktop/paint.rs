@@ -16,6 +16,7 @@ pub(super) struct Painter {
     failed: Arc<AtomicBool>,
     visible: Arc<AtomicBool>,
     reduced: Arc<AtomicBool>,
+    motion_checked: Arc<Mutex<std::time::Instant>>,
 }
 impl Painter {
     pub fn new(app: &AppHandle) -> Result<Self, Box<dyn std::error::Error>> {
@@ -41,6 +42,7 @@ impl Painter {
             failed: Arc::new(AtomicBool::new(false)),
             visible: Arc::new(AtomicBool::new(false)),
             reduced: Arc::new(AtomicBool::new(system_reduced_motion())),
+            motion_checked: Arc::new(Mutex::new(std::time::Instant::now())),
         })
     }
     pub fn reduced_motion(&self) -> bool {
@@ -59,6 +61,14 @@ impl Painter {
             {
                 return;
             }
+            if self.motion_checked.lock().unwrap().elapsed() < std::time::Duration::from_secs(1)
+                && frame
+                    .as_ref()
+                    .zip(latest.as_ref())
+                    .is_some_and(|(a, b)| a.x == b.x && a.y == b.y && a.image == b.image)
+            {
+                return;
+            }
             *latest = frame.map(Arc::new);
         }
         if self.queued.swap(true, Ordering::AcqRel) {
@@ -71,11 +81,17 @@ impl Painter {
         let failed = Arc::clone(&self.failed);
         let visible = Arc::clone(&self.visible);
         let reduced = Arc::clone(&self.reduced);
+        let motion_checked = Arc::clone(&self.motion_checked);
         if self
             .app
             .run_on_main_thread(move || {
                 use tauri::Manager;
-                reduced.store(system_reduced_motion(), Ordering::Release);
+                let mut checked = motion_checked.lock().unwrap();
+                if checked.elapsed() >= std::time::Duration::from_secs(1) {
+                    reduced.store(system_reduced_motion(), Ordering::Release);
+                    *checked = std::time::Instant::now();
+                }
+                drop(checked);
                 let result = (|| -> Result<(), Box<dyn std::error::Error>> {
                     let window = app
                         .get_window("native-overlay")
@@ -219,27 +235,15 @@ fn install(
 }
 #[cfg(target_os = "macos")]
 fn update(window: &tauri::Window, frame: &Frame) -> Result<(), Box<dyn std::error::Error>> {
-    use image::ImageEncoder;
     use objc2::{class, msg_send, runtime::AnyObject};
-    let mut png = Vec::new();
-    image::codecs::png::PngEncoder::new_with_quality(
-        &mut png,
-        image::codecs::png::CompressionType::Fast,
-        image::codecs::png::FilterType::NoFilter,
-    )
-    .write_image(
-        frame.image.as_raw(),
-        frame.image.width(),
-        frame.image.height(),
-        image::ExtendedColorType::Rgba8,
-    )?;
-    let data = objc2_foundation::NSData::with_bytes(&png);
+    let cgimage = super::cgimage::image(&frame.image)?;
     unsafe {
         let native = window.ns_window()? as *mut AnyObject;
         let image: *mut AnyObject = msg_send![class!(NSImage), alloc];
-        let image: *mut AnyObject = msg_send![image,initWithData:&*data];
+        let image: *mut AnyObject = msg_send![image,initWithCGImage:cgimage, size:objc2_foundation::NSSize::new(frame.image.width() as f64,frame.image.height() as f64)];
+        core_foundation::base::CFRelease(cgimage);
         if image.is_null() {
-            return Err("could not decode native frame".into());
+            return Err("could not create native frame image".into());
         }
         let view: *mut AnyObject = msg_send![native, contentView];
         let _: () = msg_send![view,setImage:image];

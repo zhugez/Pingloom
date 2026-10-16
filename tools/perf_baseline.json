@@ -1,1 +1,45 @@
-{}
+{
+  "windows": {
+    "binary_bytes": 68090368,
+    "emotes": 48,
+    "installer_bytes": 60175944,
+    "portable_bytes": 68090368,
+    "asset_bytes": 57627173,
+    "render_emote_cleared_bytes": 362404.0,
+    "render_emote_resize_count": 1.0,
+    "render_emote_written_bytes": 139876.0,
+    "render_ping_cleared_bytes": 777924.0,
+    "render_ping_resize_count": 2.0,
+    "render_ping_written_bytes": 108407.46666666666,
+    "render_wheel_1_5_cleared_bytes": 1920996.0,
+    "render_wheel_1_5_resize_count": 0.0,
+    "render_wheel_1_5_written_bytes": 2204126.0,
+    "render_wheel_1_cleared_bytes": 857476.0,
+    "render_wheel_1_resize_count": 0.0,
+    "render_wheel_1_written_bytes": 981226.0,
+    "render_wheel_2_cleared_bytes": 3407716.0,
+    "render_wheel_2_resize_count": 0.0,
+    "render_wheel_2_written_bytes": 3915126.0
+  },
+  "macos": {
+    "binary_bytes": 138749024,
+    "emotes": 48,
+    "macos_zip_bytes": 122379063,
+    "asset_bytes": 57627173,
+    "render_emote_cleared_bytes": 360000.0,
+    "render_emote_resize_count": 1.0,
+    "render_emote_written_bytes": 139876.0,
+    "render_ping_cleared_bytes": 774400.0,
+    "render_ping_resize_count": 2.0,
+    "render_ping_written_bytes": 101300.8,
+    "render_wheel_1_5_cleared_bytes": 1915456.0,
+    "render_wheel_1_5_resize_count": 0.0,
+    "render_wheel_1_5_written_bytes": 3350330.0,
+    "render_wheel_1_cleared_bytes": 853776.0,
+    "render_wheel_1_resize_count": 0.0,
+    "render_wheel_1_written_bytes": 1493186.0,
+    "render_wheel_2_cleared_bytes": 3400336.0,
+    "render_wheel_2_resize_count": 0.0,
+    "render_wheel_2_written_bytes": 5947758.0
+  }
+}

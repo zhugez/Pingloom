@@ -40,7 +40,7 @@ use windows_sys::Win32::UI::Shell::{
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CallNextHookEx, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu,
-    DispatchMessageW, GetCursorPos, GetMessageW, LoadIconW, PeekMessageW, PostMessageW,
+    DispatchMessageW, GetCursorPos, GetMessageW, KillTimer, LoadIconW, PeekMessageW, PostMessageW,
     PostQuitMessage, RegisterClassW, RegisterWindowMessageW, SetForegroundWindow, SetTimer,
     SetWindowLongPtrW, SetWindowsHookExW, TrackPopupMenu, TranslateMessage, UnhookWindowsHookEx,
     CREATESTRUCTW, GWLP_USERDATA, GWL_STYLE, HC_ACTION, HHOOK, IDI_APPLICATION, KBDLLHOOKSTRUCT,
@@ -60,6 +60,7 @@ use std::sync::{mpsc, Arc};
 const SELF_MARKER: usize = 0x4c50_494e;
 const TIMER_FRAME: usize = 1;
 const TIMER_WATCHDOG: usize = 2;
+const TIMER_DISPLAY_CHANGE: usize = 3;
 const WM_TRAY: u32 = WM_APP + 10;
 const WM_INJECT: u32 = WM_APP + 11;
 const WM_ACTION: u32 = WM_APP + 12;
@@ -99,6 +100,7 @@ struct App {
     key_hook: HHOOK,
     engine: GestureEngine,
     overlay: Overlay,
+    frame_timer_on: bool,
     audio: audio::Audio,
     settings_window: SettingsWindow,
     pending_inputs: Vec<ReplayInput>,
@@ -157,6 +159,7 @@ unsafe fn run_inner(
     app_handle: tauri::AppHandle,
     desktop_state: Arc<desktop_settings::DesktopSettingsState>,
 ) -> Result<(), String> {
+    crate::assets::validate()?;
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     let instance = GetModuleHandleW(null());
     if instance.is_null() {
@@ -184,6 +187,7 @@ unsafe fn run_inner(
         settings_window: SettingsWindow::new(settings_path),
         engine,
         overlay,
+        frame_timer_on: false,
         audio: audio::Audio::new(),
         pending_inputs: Vec::new(),
         native_keys_down: [false; 256],
@@ -225,7 +229,6 @@ unsafe fn run_inner(
         APPLICATION = null_mut();
         return Err(error);
     }
-    SetTimer(hwnd, TIMER_FRAME, 33, None);
     SetTimer(hwnd, TIMER_WATCHDOG, 500, None);
     mailbox.publish_hwnd(hwnd);
     if let Ok(mut slot) = app.desktop_state.mailbox.lock() {
@@ -566,9 +569,9 @@ impl App {
     }
 
     unsafe fn resync_native_keys(&mut self) {
-        let settings = self.settings().clone();
         for vk in 0..=u8::MAX {
-            if !super::logic::swallowed_trigger_key(&settings, vk)
+            if self.native_keys_down[usize::from(vk)]
+                && !super::logic::swallowed_trigger_key(self.engine.settings(), vk)
                 && GetAsyncKeyState(i32::from(vk)) >= 0
             {
                 self.native_keys_down[usize::from(vk)] = false;
@@ -579,10 +582,14 @@ impl App {
     unsafe fn update_wheel_state(&mut self, action: Action) -> bool {
         match action {
             Action::WheelOpen { wheel, origin } => {
-                self.overlay.wheel_open(wheel, origin, dpi_scale_at(origin));
+                if !self.engine.settings().muted {
+                    self.audio.warm();
+                }
+                self.overlay
+                    .wheel_open(wheel, origin, self.engine.gesture_scale());
             }
             Action::WheelMove { point, .. } => {
-                let settings = self.settings().clone();
+                let settings = self.engine.settings();
                 if self.overlay.wheel_move(point) && settings.tick_sound {
                     let volume = if settings.muted {
                         0.0
@@ -595,7 +602,27 @@ impl App {
             Action::Cancel => self.overlay.wheel_close(),
             _ => return false,
         }
+        // Arm once; repeated SetTimer calls would restart the frame period.
+        self.sync_frame_timer();
         true
+    }
+
+    unsafe fn sync_frame_timer(&mut self) {
+        let active = self.overlay.is_active();
+        if active && !self.frame_timer_on {
+            if SetTimer(self.hwnd, TIMER_FRAME, 33, None) != 0 {
+                self.frame_timer_on = true;
+                PostMessageW(self.hwnd, WM_TIMER, TIMER_FRAME, 0);
+            }
+        } else if !active && self.frame_timer_on {
+            KillTimer(self.hwnd, TIMER_FRAME);
+            self.frame_timer_on = false;
+            self.overlay.tick(self.engine.settings());
+        }
+    }
+    unsafe fn render_overlay(&mut self) {
+        self.overlay.tick(self.engine.settings());
+        self.sync_frame_timer();
     }
 
     unsafe fn handle_action(&mut self, queued: QueuedAction) {
@@ -651,7 +678,7 @@ impl App {
             Action::Cancel => self.overlay.wheel_close(),
             Action::Toggled { .. } => self.update_tray_status(),
         }
-        self.overlay.tick(&settings);
+        self.render_overlay();
     }
 
     unsafe fn spawn_emote(&mut self, slug: &str, point: Point, size: u16) {
@@ -663,7 +690,11 @@ impl App {
                 .spawn(move || {
                     let hwnd = hwnd as HWND;
                     // An empty completion releases the pending state into its still fallback.
-                    let frames = overlay::decode_emote(&decoding_slug).unwrap_or_default();
+                    let frames = crate::animation::decode_emote_sized(
+                        &decoding_slug,
+                        (f64::from(size) * 1.25) as u32,
+                    )
+                    .unwrap_or_default();
                     let raw = Box::into_raw(Box::new((decoding_slug, frames)));
                     if PostMessageW(hwnd, WM_FRAMES, 0, raw as LPARAM) == 0 {
                         drop(Box::from_raw(raw));
@@ -732,6 +763,9 @@ impl App {
             match request {
                 OwnerRequest::Query(reply) => {
                     let _ = reply.send(Ok((self.settings().clone(), self.owner_status())));
+                }
+                OwnerRequest::Status(reply) => {
+                    let _ = reply.send(Ok(self.owner_status()));
                 }
                 OwnerRequest::Barrier(reply) => {
                     // Settings lifecycle orders requests, but never pauses or cancels input.
@@ -809,8 +843,7 @@ impl App {
                         self.apply_decision(decision, false, None);
                         self.drain_injections();
                         self.load_warning = None;
-                        let applied_settings = self.settings().clone();
-                        self.overlay.tick(&applied_settings);
+                        self.render_overlay();
                         self.update_tray_status();
                         Ok(self.owner_status())
                     })();
@@ -846,13 +879,20 @@ impl App {
             WM_FRAMES => {
                 let (slug, frames) = *Box::from_raw(lparam as *mut (String, Vec<AnimatedFrame>));
                 self.overlay.set_emote_frames(&slug, frames);
+                self.render_overlay();
                 Some(0)
             }
             // Dormant native Settings notifications are untagged; only desktop lifecycle ACKs may resume hooks.
             APP_SETTINGS_CLOSED => Some(0),
             WM_TIMER if wparam == TIMER_FRAME => {
-                let settings = self.settings().clone();
-                self.overlay.tick(&settings);
+                let _trace = crate::trace::probe(crate::trace::Metric::FrameTick);
+                self.render_overlay();
+                Some(0)
+            }
+            WM_TIMER if wparam == TIMER_DISPLAY_CHANGE => {
+                KillTimer(self.hwnd, TIMER_DISPLAY_CHANGE);
+                self.overlay.refresh_display();
+                self.render_overlay();
                 Some(0)
             }
             WM_TIMER if wparam == TIMER_WATCHDOG => {
@@ -1034,8 +1074,7 @@ unsafe fn apply_settings_message(lparam: LPARAM) {
         match app.engine.set_settings(settings) {
             Ok(decision) => {
                 app.apply_decision(decision, false, None);
-                let settings = app.settings().clone();
-                app.overlay.tick(&settings);
+                app.render_overlay();
                 None
             }
             Err(error) => Some(error.to_string()),
@@ -1064,10 +1103,10 @@ unsafe fn handle_display_change() {
     if app.is_null() {
         return;
     }
-    let instance = (*app).instance;
-    match Overlay::new(instance) {
-        Ok(overlay) => (*app).overlay = overlay,
-        Err(error) => show_error(&error),
+    // SetTimer resets an existing timer: a burst produces one geometry refresh.
+    if SetTimer((*app).hwnd, TIMER_DISPLAY_CHANGE, 250, None) == 0 {
+        (&mut *app).overlay.refresh_display();
+        (&mut *app).render_overlay();
     }
 }
 
@@ -1127,7 +1166,8 @@ unsafe extern "system" fn main_proc(
         _ if matches!(
             message,
             WM_INJECT | WM_ACTION | WM_FRAMES | APP_SETTINGS_CLOSED | WM_OWNER_REQUEST
-        ) || message == WM_TIMER && matches!(wparam, TIMER_FRAME | TIMER_WATCHDOG) =>
+        ) || message == WM_TIMER
+            && matches!(wparam, TIMER_FRAME | TIMER_WATCHDOG | TIMER_DISPLAY_CHANGE) =>
         {
             let app = APPLICATION;
             if app.is_null() {
@@ -1141,6 +1181,7 @@ unsafe extern "system" fn main_proc(
 }
 
 unsafe extern "system" fn mouse_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+    let _trace = crate::trace::probe(crate::trace::Metric::Mouse);
     if SettingsWindow::callback_busy() {
         return CallNextHookEx(null_mut(), code, wparam, lparam);
     }
@@ -1244,6 +1285,7 @@ unsafe extern "system" fn mouse_proc(code: i32, wparam: WPARAM, lparam: LPARAM) 
 }
 
 unsafe extern "system" fn key_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+    let _trace = crate::trace::probe(crate::trace::Metric::Keyboard);
     if SettingsWindow::callback_busy() {
         return CallNextHookEx(null_mut(), code, wparam, lparam);
     }
