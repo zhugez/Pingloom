@@ -77,7 +77,7 @@ jobs:
         run: ui/node_modules/.bin/tauri build --bundles nsis -- --locked
       - name: macOS universal application bundle
         if: matrix.platform == 'macos'
-        run: ui/node_modules/.bin/tauri build --config tauri.macos.conf.json --target universal-apple-darwin --bundles app --no-default-features --features desktop,custom-protocol -- --locked
+        run: ui/node_modules/.bin/tauri build --config tauri.macos.conf.json --target universal-apple-darwin --bundles app --features desktop,custom-protocol -- --no-default-features --locked
       - name: Stage Windows
         if: matrix.platform == 'windows'
         shell: bash
