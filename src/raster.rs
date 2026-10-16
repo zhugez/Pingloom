@@ -1,6 +1,30 @@
 //! Shared native artwork sampling. Filter premultiplied color, not hidden RGB.
 use image::{imageops, Rgba, Rgba32FImage, RgbaImage};
-use std::borrow::Cow;
+use std::{borrow::Cow, sync::Arc};
+pub(crate) type ArtCache = Vec<((String, u32), Arc<RgbaImage>)>;
+pub(crate) fn cached_art(
+    cache: &mut ArtCache,
+    path: &str,
+    image: &RgbaImage,
+    size: u32,
+) -> Arc<RgbaImage> {
+    if let Some((_, art)) = cache
+        .iter()
+        .find(|((key, width), _)| key == path && *width == size)
+    {
+        return Arc::clone(art);
+    }
+    let art = Arc::new(resize_art(image, size).into_owned());
+    let used: usize = cache.iter().map(|(_, i)| i.as_raw().len()).sum();
+    // ponytail: exact-size linear bounded cache; LRU only if measured DPI churn needs it.
+    if cache.len() >= 160 || used + art.as_raw().len() > 8 * 1024 * 1024 {
+        cache.clear();
+    }
+    if art.as_raw().len() <= 8 * 1024 * 1024 {
+        cache.push(((path.to_owned(), size), Arc::clone(&art)));
+    }
+    art
+}
 
 pub(crate) fn resize_art(image: &RgbaImage, width: u32) -> Cow<'_, RgbaImage> {
     if image.width() == width || image.width() == 0 || image.height() == 0 {
@@ -17,6 +41,8 @@ pub(crate) fn resize_art_to(image: &RgbaImage, width: u32, height: u32) -> Cow<'
     if image.dimensions() == (width, height) || image.width() == 0 || image.height() == 0 {
         return Cow::Borrowed(image);
     }
+    #[cfg(test)]
+    crate::render_metrics::resize();
     let (width, height) = (width.max(1), height.max(1));
     let premultiplied = Rgba32FImage::from_fn(image.width(), image.height(), |x, y| {
         let pixel = image.get_pixel(x, y);

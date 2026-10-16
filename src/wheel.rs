@@ -10,8 +10,8 @@ const LABELS: &str = "textures/pingloom-wheel-labels.png";
 
 // Rasterize the font atlas to the display scale once, not on every owner-thread frame.
 fn labels(scale: f64, theme: Theme) -> Option<RgbaImage> {
-    let bytes = crate::assets::ASSETS.get_file(LABELS)?.contents();
-    let atlas = image::load_from_memory(bytes).ok()?.into_rgba8();
+    let bytes = crate::assets::get(LABELS)?;
+    let atlas = image::load_from_memory(&bytes).ok()?.into_rgba8();
     let mut atlas =
         crate::raster::resize_art(&atlas, (EXTENT * 2.0 * scale).round() as u32).into_owned();
     let ink = theme.palette().ink;
@@ -88,6 +88,26 @@ impl Surface {
             *self = Self::with_theme(scale, theme);
         }
     }
+    /// Pixels which replace the idle layer when a slot is highlighted. Inactive
+    /// and fixed pixels are already supplied by the Windows baked layer.
+    #[cfg(windows)]
+    pub(crate) fn paint_selection(
+        &self,
+        selection: &[f64; 8],
+        mut point: impl FnMut(i32, i32, [u8; 4]),
+    ) {
+        let width = (self.extent * 2 + 1) as usize;
+        for (i, texel) in self.pixels.iter().enumerate() {
+            if texel.idle != texel.selected && selection[usize::from(texel.slot)] > 0.0 {
+                point(
+                    (i % width) as i32 - self.extent,
+                    (i / width) as i32 - self.extent,
+                    texel.rgba(selection),
+                );
+            }
+        }
+    }
+
     /// Straight RGBA for either the Win32 premultiplied canvas or Unix compositor.
     pub(crate) fn paint(&self, selection: &[f64; 8], mut point: impl FnMut(i32, i32, [u8; 4])) {
         let width = (self.extent * 2 + 1) as usize;

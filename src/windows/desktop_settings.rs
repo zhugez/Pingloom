@@ -127,10 +127,7 @@ fn mailbox(state: &DesktopSettingsState) -> Result<Arc<OwnerMailbox>, Rejection>
         })
 }
 fn preview_data(path: &str) -> String {
-    let bytes = super::assets::ASSETS
-        .get_file(path)
-        .map(|file| file.contents())
-        .unwrap_or(&[]);
+    let bytes = super::assets::get(path).unwrap_or_default();
     format!(
         "data:image/png;base64,{}",
         base64::Engine::encode(&base64::engine::general_purpose::STANDARD, bytes)
@@ -184,6 +181,7 @@ pub(crate) async fn get_settings_and_catalog<R: Runtime>(
     window: WebviewWindow<R>,
     state: tauri::State<'_, Arc<DesktopSettingsState>>,
 ) -> Result<Boot, Rejection> {
+    let _trace = crate::trace::probe(crate::trace::Metric::SettingsBoot);
     trusted(&window)?;
     let generation = state
         .lifecycle
@@ -235,11 +233,15 @@ pub(crate) async fn get_settings_and_catalog<R: Runtime>(
             request_id: None,
         });
     }
+    let catalog = tauri::async_runtime::spawn_blocking(catalog)
+        .await
+        .map_err(|e| Rejection::from(OwnerError::unavailable(e.to_string())))?;
+    check_session(&state, &session)?;
     Ok(Boot {
         session_id: session,
         settings,
         status: status(run_status.clone()),
-        catalog: catalog(),
+        catalog,
         load_warning: run_status.load_warning,
         platform: std::env::consts::OS,
     })
@@ -391,8 +393,8 @@ pub(crate) async fn settings_heartbeat<R: Runtime>(
             request_id: None,
         });
     }
-    let rx = mailbox(&state)?.query().map_err(Rejection::from)?;
-    let (_, run_status) = tauri::async_runtime::spawn_blocking(move || wait_reply(rx))
+    let rx = mailbox(&state)?.status().map_err(Rejection::from)?;
+    let run_status = tauri::async_runtime::spawn_blocking(move || wait_reply(rx))
         .await
         .map_err(|e| Rejection::from(OwnerError::unavailable(e.to_string())))?
         .map_err(Rejection::from)?;
@@ -455,6 +457,7 @@ pub(crate) async fn save_settings<R: Runtime>(
     request_id: String,
     candidate: serde_json::Value,
 ) -> Result<Saved, Rejection> {
+    let _trace = crate::trace::probe(crate::trace::Metric::Save);
     trusted(&window)?;
     check_session(&state, &session_id)?;
     if request_id.is_empty() || request_id.len() > 64 {
@@ -720,29 +723,55 @@ pub(crate) fn install<R: tauri::Runtime>(
         ])
 }
 
-pub(crate) fn spawn_watchdog(app: AppHandle, state: Arc<DesktopSettingsState>) {
-    std::thread::Builder::new()
+fn spawn_watchdog(app: AppHandle, state: Arc<DesktopSettingsState>, opening: u64) -> bool {
+    match state.lifecycle.lock() {
+        Ok(mut lifecycle) => {
+            if !lifecycle.claim_watchdog() {
+                return true;
+            }
+        }
+        Err(_) => return false,
+    }
+    let worker_state = Arc::clone(&state);
+    let spawned = std::thread::Builder::new()
         .name("pingloom-settings-watchdog".into())
-        .spawn(move || loop {
-            std::thread::sleep(std::time::Duration::from_secs(1));
-            drive_resume(Arc::clone(&state));
-            let generation = state
+        .spawn(move || {
+            while worker_state
                 .lifecycle
                 .lock()
-                .ok()
-                .and_then(|l| l.active_generation());
-            if let Some(generation) = generation {
-                if let Err(error) =
-                    close_generation(app.clone(), Arc::clone(&state), generation, true, None)
-                {
-                    eprintln!(
-                        "Could not schedule Settings watchdog close: {}",
-                        error.message
-                    );
+                .is_ok_and(|mut l| l.keep_watchdog())
+            {
+                std::thread::sleep(std::time::Duration::from_secs(1));
+                drive_resume(Arc::clone(&worker_state));
+                let generation = worker_state
+                    .lifecycle
+                    .lock()
+                    .ok()
+                    .and_then(|l| l.active_generation());
+                if let Some(generation) = generation {
+                    if let Err(error) = close_generation(
+                        app.clone(),
+                        Arc::clone(&worker_state),
+                        generation,
+                        true,
+                        None,
+                    ) {
+                        eprintln!(
+                            "Could not schedule Settings watchdog close: {}",
+                            error.message
+                        );
+                    }
                 }
             }
-        })
-        .ok();
+        });
+    if let Err(error) = spawned {
+        if let Ok(mut lifecycle) = state.lifecycle.lock() {
+            lifecycle.watchdog_spawn_failed(opening);
+        }
+        eprintln!("Could not start Settings watchdog: {error}");
+        return false;
+    }
+    true
 }
 
 fn drive_resume(state: Arc<DesktopSettingsState>) {
@@ -830,6 +859,9 @@ pub(crate) fn schedule_open(app: AppHandle, state: Arc<DesktopSettingsState>) {
         Some(g) => g,
         None => return,
     };
+    if !spawn_watchdog(app.clone(), Arc::clone(&state), generation) {
+        return;
+    }
     let mb = match mailbox(&state) {
         Ok(mb) => mb,
         Err(_) => {

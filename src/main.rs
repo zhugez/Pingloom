@@ -14,8 +14,12 @@ mod assets;
 mod custom_emotes;
 #[cfg(feature = "desktop")]
 mod raster;
+#[cfg(all(feature = "desktop", test))]
+mod render_metrics;
 #[cfg(any(feature = "desktop", test))]
 mod single_instance;
+#[cfg(feature = "desktop")]
+mod trace;
 #[cfg(feature = "desktop")]
 mod wheel;
 
@@ -31,6 +35,7 @@ mod desktop;
 
 #[cfg(all(windows, feature = "desktop"))]
 fn main() {
+    trace::initialize();
     use std::sync::{
         atomic::{AtomicBool, Ordering},
         mpsc, Arc, Mutex,
@@ -78,10 +83,6 @@ fn main() {
                 Ok(Err(error)) => return Err(error.into()),
                 Err(error) => return Err(format!("native owner startup failed: {error}").into()),
             }
-            windows::desktop_settings::spawn_watchdog(
-                app.handle().clone(),
-                Arc::clone(&state_setup),
-            );
             // A completed owner signals Tauri to exit even when shutdown originated in its tray.
             let app_handle = app.handle().clone();
             let owner_done = Arc::clone(&done_setup);
@@ -118,6 +119,7 @@ fn main() {
 
 #[cfg(all(not(windows), feature = "desktop"))]
 fn main() {
+    trace::initialize();
     if let Err(error) = desktop::run() {
         eprintln!("Pingloom could not start: {error}");
         std::process::exit(1);

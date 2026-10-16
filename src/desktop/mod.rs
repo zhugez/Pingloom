@@ -1,4 +1,6 @@
 //! Native Linux/X11 and macOS adapters. Windows keeps its existing owner and renderer.
+#[cfg(target_os = "macos")]
+mod cgimage;
 mod input;
 mod paint;
 mod render;
@@ -15,7 +17,7 @@ use pingloom_core::{Action, GestureEngine, InputEvent, Point, Settings};
 use runtime_mailbox::{OwnerError, OwnerMailbox, OwnerRequest, RuntimeStatus};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
-    mpsc, Arc, Mutex,
+    mpsc, Arc, Mutex, OnceLock,
 };
 use std::time::{Duration, Instant};
 use tauri::{
@@ -37,11 +39,19 @@ struct OwnerState {
     origin: Option<Point>,
     scale: f64,
 }
+static WAKE: OnceLock<mpsc::SyncSender<()>> = OnceLock::new();
+pub(crate) fn wake_owner() -> bool {
+    WAKE.get().is_none_or(|tx| match tx.try_send(()) {
+        Ok(()) | Err(mpsc::TrySendError::Full(_)) => true,
+        Err(mpsc::TrySendError::Disconnected(_)) => false,
+    })
+}
 struct Shared {
     state: Mutex<OwnerState>,
     actions: mpsc::SyncSender<QueuedAction>,
     running: AtomicBool,
     overflow: AtomicBool,
+    gesture_busy: AtomicBool,
     clock: Instant,
     monitors: Vec<(i32, i32, u32, u32, f64)>,
 }
@@ -53,12 +63,22 @@ impl Shared {
         }
     }
     fn decision(&self, state: &mut OwnerState, decision: InputDecision) -> bool {
+        let needs_wake = !decision.actions.is_empty();
+        self.gesture_busy.store(
+            matches!(
+                state.engine.state(),
+                pingloom_core::gesture::GestureState::Pending
+                    | pingloom_core::gesture::GestureState::Wheel
+            ),
+            Ordering::Release,
+        );
         let replay = crate::logic::insert_replay_batch(&decision.replay, input::replay);
         if !replay.complete || !replay.balance_complete {
             state.warning = Some("Input replay failed; gestures paused. Close and restart Pingloom after checking input permissions.".into());
             let recovery = state.engine.set_enabled(false);
             let _ = crate::logic::insert_replay_batch(&recovery.replay, input::replay);
             state.origin = None;
+            self.gesture_busy.store(false, Ordering::Release);
             self.overflow.store(true, Ordering::Release);
             return false;
         }
@@ -83,7 +103,15 @@ impl Shared {
                 self.overflow.store(true, Ordering::Release);
             }
         }
+        if needs_wake {
+            wake_owner();
+        }
         decision.swallow
+    }
+    fn needs_fullscreen_probe(&self, button: pingloom_core::Button) -> bool {
+        self.state
+            .lock()
+            .is_ok_and(|state| state.engine.needs_fullscreen_probe(button))
     }
     fn input(&self, event: InputEvent) -> bool {
         if !self.running.load(Ordering::Acquire) {
@@ -149,6 +177,7 @@ impl Shared {
 }
 
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
+    crate::assets::validate()?;
     let mailbox = OwnerMailbox::new();
     let desktop = Arc::new(desktop_settings::DesktopSettingsState::default());
     *desktop.mailbox.lock().unwrap() = Some(Arc::clone(&mailbox));
@@ -170,9 +199,11 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 Err(error) => (Settings::default(), Some(format!("Could not load settings; existing file was preserved: {error}"))),
             };
             let (tx, rx) = mpsc::sync_channel(96);
+            let (wake_tx,wake_rx)=mpsc::sync_channel(1);
+            let _=WAKE.set(wake_tx);
             let mut engine = GestureEngine::new(settings)?;
             engine.set_enabled(false);
-            let shared = Arc::new(Shared { state: Mutex::new(OwnerState { engine, ready: false, warning, origin: None, scale: 1.0 }), actions: tx, running: AtomicBool::new(true), overflow: AtomicBool::new(false), clock: Instant::now(), monitors: app.available_monitors()?.into_iter().map(|m| (m.position().x, m.position().y, m.size().width, m.size().height, m.scale_factor())).collect() });
+            let shared = Arc::new(Shared { state: Mutex::new(OwnerState { engine, ready: false, warning, origin: None, scale: 1.0 }), actions: tx, running: AtomicBool::new(true), overflow: AtomicBool::new(false), gesture_busy:AtomicBool::new(false), clock: Instant::now(), monitors: app.available_monitors()?.into_iter().map(|m| (m.position().x, m.position().y, m.size().width, m.size().height, m.scale_factor())).collect() });
             let painter = paint::Painter::new(app.handle())?;
             let settings_item = MenuItem::with_id(app, "settings", "Settings…", true, None::<&str>)?;
             let toggle = CheckMenuItem::with_id(app, "toggle", "Gestures enabled", true, false, None::<&str>)?;
@@ -213,6 +244,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                         let mut state = shared.state.lock().unwrap();
                         match request {
                             OwnerRequest::Query(reply) => { let _ = reply.send(Ok((state.engine.settings().clone(), Shared::status(&state)))); }
+                            OwnerRequest::Status(reply)=>{let _=reply.send(Ok(Shared::status(&state)));}
                             OwnerRequest::Barrier(reply) => {
                                 // No input mutation: opening/closing Settings is not a pause.
                                 let _ = reply.send(Ok(()));
@@ -229,6 +261,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                                 let decision = state.engine.set_suspended(true);
                                 shared.decision(&mut state, decision);
                                 shared.running.store(false, Ordering::Release);
+                                input::stop();
                                 stop_owner.store(true, Ordering::Release);
                                 let _ = reply.send(Ok(()));
                             }
@@ -249,13 +282,13 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                     renderer.reduced = painter.reduced_motion();
                     while let Ok(action) = rx.try_recv() { renderer.action(action, &settings, &audio); }
                     painter.present(renderer.frame(&settings));
-                    std::thread::sleep(Duration::from_millis(33));
+                    let active=renderer.is_active()||shared.gesture_busy.load(Ordering::Acquire);
+                    let _=wake_rx.recv_timeout(Duration::from_millis(if active {33} else {250}));
                 }
                 mailbox_owner.close_and_reject_pending();
                 painter.present(None);
                 handle.exit(0);
             })?;
-            desktop_settings::spawn_watchdog(app.handle().clone(), Arc::clone(&state_setup));
             if std::env::args().any(|arg| arg == "--settings") {
                 desktop_settings::schedule_open(app.handle().clone(), Arc::clone(&state_setup));
             }

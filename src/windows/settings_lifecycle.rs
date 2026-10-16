@@ -25,6 +25,7 @@ enum Phase {
 pub(crate) struct Lifecycle {
     next_generation: Generation,
     phase: Phase,
+    watchdog_running: bool,
 }
 
 impl Default for Lifecycle {
@@ -32,11 +33,34 @@ impl Default for Lifecycle {
         Self {
             next_generation: 1,
             phase: Phase::Closed,
+            watchdog_running: false,
         }
     }
 }
 
 impl Lifecycle {
+    pub(crate) fn claim_watchdog(&mut self) -> bool {
+        if self.watchdog_running || matches!(self.phase, Phase::Closed) {
+            return false;
+        }
+        self.watchdog_running = true;
+        true
+    }
+
+    // Admission and retirement share the lifecycle lock: a racing open either
+    // retains this worker or starts a new one, never losing its watchdog.
+    pub(crate) fn keep_watchdog(&mut self) -> bool {
+        if matches!(self.phase, Phase::Closed) {
+            self.watchdog_running = false;
+        }
+        self.watchdog_running
+    }
+
+    pub(crate) fn watchdog_spawn_failed(&mut self, generation: u64) {
+        self.watchdog_running = false;
+        self.opening_failed_before_enqueue(generation);
+    }
+
     pub(crate) fn reserve_open(&mut self) -> Option<u64> {
         if !matches!(self.phase, Phase::Closed) {
             return None;
@@ -304,10 +328,47 @@ mod tests {
     }
 
     #[test]
+    fn watchdog_retires_only_when_closed_and_rearms_without_duplicate_workers() {
+        let mut s = Lifecycle::default();
+        assert!(!s.claim_watchdog());
+        let g = s.reserve_open().unwrap();
+        assert!(s.claim_watchdog());
+        assert!(!s.claim_watchdog());
+        assert!(s.keep_watchdog(), "opening still needs recovery");
+        assert!(s.opened(g, at(0)));
+        assert!(s.keep_watchdog());
+        assert!(s.claim_close(g, at(1), false));
+        assert!(s.keep_watchdog(), "close callback is still pending");
+        s.finish_close(g, true, at(1));
+        assert!(s.keep_watchdog());
+        assert_eq!(s.claim_resume(), Some(g));
+        assert!(s.keep_watchdog(), "barrier completion is still pending");
+        s.finish_resume(g, false);
+        assert!(s.keep_watchdog(), "failed barrier must be retried");
+        assert_eq!(s.claim_resume(), Some(g));
+        s.finish_resume(g, true);
+        // Reopen before retirement retains the existing worker.
+        let next = s.reserve_open().unwrap();
+        assert!(!s.claim_watchdog());
+        assert!(s.keep_watchdog());
+        s.opening_failed_before_enqueue(next);
+        assert!(!s.keep_watchdog());
+        // Reopen after retirement admits exactly one new worker.
+        let next = s.reserve_open().unwrap();
+        assert!(s.claim_watchdog());
+        assert!(!s.claim_watchdog());
+        s.watchdog_spawn_failed(next);
+        assert!(!s.keep_watchdog());
+        s.reserve_open().unwrap();
+        assert!(s.claim_watchdog(), "spawn failure must permit retry");
+    }
+
+    #[test]
     fn generations_reject_exhaustion() {
         let mut s = Lifecycle {
             next_generation: u64::MAX,
             phase: Phase::Closed,
+            watchdog_running: false,
         };
         assert_eq!(s.reserve_open(), None);
     }
