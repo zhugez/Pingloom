@@ -34,7 +34,7 @@ pub(super) fn image(frame: &image::RgbaImage) -> Result<*mut c_void, String> {
         return Err("empty native frame".into());
     }
     let mut bytes = frame.as_raw().clone();
-    for pixel in bytes.chunks_exact_mut(4) {
+    for pixel in bytes.as_chunks_mut::<4>().0 {
         let alpha = u16::from(pixel[3]);
         for c in &mut pixel[..3] {
             *c = ((u16::from(*c) * alpha + 127) / 255) as u8;
