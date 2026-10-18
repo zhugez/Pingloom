@@ -5,10 +5,12 @@
   "private": true,
   "description": "Cloudflare Worker hosting Pingloom landing page",
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy"
+    "build": "node build.mjs",
+    "test": "npm run build && node --test tests/landing.test.mjs",
+    "dev": "npm run build && wrangler dev",
+    "deploy": "npm run build && wrangler deploy"
   },
   "devDependencies": {
-    "wrangler": "^3.114.0"
+    "wrangler": "4.151.1"
   }
 }

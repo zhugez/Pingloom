@@ -1,92 +1,34 @@
-# Pingloom Landing Page (Cloudflare Worker)
+# Pingloom landing
 
-High-performance, edge-rendered landing page for **Pingloom** designed with the authentic **Loom V7 Design System** (Loom Day / Loom Night / Catppuccin palettes, double-bezel specular reflections, tactile radial wheel simulator with WebAudio synthesis, and platform download routing).
+One fixed **Loom Night / Pingloom Blush** theme, matching the desktop app.
 
-- **Production URL**: [https://app.pingloom.workers.dev/](https://app.pingloom.workers.dev/)
-- **Runtime**: Cloudflare Workers
-- **Worker Name**: `app`
-
----
-
-## Project Structure
-
-```
-landing/
-├── wrangler.toml       # Cloudflare Workers configuration (workers_dev = true)
-├── package.json        # NPM configuration (ESM)
-├── src/
-│   └── index.js        # Worker script serving edge-rendered landing page & API
-└── README.md           # Documentation & CI/CD deployment guide
+```sh
+npm ci
+npm test
+npm run dev
+npm run deploy
 ```
 
----
+`build.mjs` reads `../src/model.rs` for the default Ping and Emote Wheels, then copies their actual PNG, animated WebP and OGG assets into generated `public/`. It also copies bundled fonts, brand artwork, third-party notices and existing app renders from `docs/media/`. No duplicate artwork catalogue, external image URLs or synthetic audio.
 
-## Design System (Loom V7 Port)
+The browser demo supports pointer dragging, centre cancellation, keyboard slice activation and optional real asset audio. Reduced-motion users get still artwork. This is a browser approximation of the gesture, not native desktop input or a latency benchmark.
 
-The landing page mirrors the desktop Tauri 2 Settings UI design:
+Images are labelled by provenance: the native Wheel image is a native renderer raster preview; the Settings screenshot is a browser-rendered app UI, not a physical desktop capture. League artwork belongs to Riot Games and is not MIT-licensed; see the linked third-party notices.
 
-1. **Loom Day / Loom Night & Catppuccin Color Schemes**:
-   - `Loom Night`: Dark ground (`#121013`), plate (`#1a171b`), Pingloom Blush accent (`#e2b4bd`), ink (`#fff5f5`).
-   - `Loom Day`: Light ground (`#fbf6f5`), crisp white plates, blush secondary surfaces, ink (`#3a3437`).
-   - `Catppuccin`: Canonical Latte, Frappé, and Mocha palettes.
-2. **Double-Bezel Specular Reflection**:
-   - Outer shell (`.bezel`) with 36px radius and interactive specular spotlight tracking pointer movement (`--mx`, `--my`).
-   - Inner plate (`.plate`) with 30px radius and fine inset highlight (`inset 0 1px 0 var(--hi)`).
-3. **Interactive Dual-Mode Radial Wheel Simulator**:
-   - 8 tactical pings: *Danger, Enemy Vision, On My Way, All In, Assist Me, Need Vision, Enemy Missing, Push*.
-   - 8 League emotes: *Angry Kitty, Bee Happy, GG Heart, Despair, Poro Snax, Scout Approved, Sweating Bot, Nice Try*.
-   - Web Audio API synthesizer with harmonic overtones and sound toggle.
-   - 86px central cancellation hub ("RELEASE to cancel") with dead-zone detection.
-   - Dynamic radial burst ping explosion on release.
-4. **Interactive Slice Inspector**:
-   - Live property breakdown (angle, bearing, audio frequency, threshold).
-5. **Continuous Telemetry & Hardware CI Gate**:
-   - Highlights sub-millisecond p95 latency (`0.02ms`), zero heap churn (`0 B`), and lightweight memory footprint (`< 35 MB`).
+## Deployment
 
----
+Worker `app` serves `/`, `/api/status`, `/download/windows`, `/download/windows-portable`, `/download/macos` and locally hosted static assets via the `ASSETS` binding in `wrangler.toml`.
 
-## Edge Endpoints & Redirects
+`.github/workflows/deploy-landing.yml` runs tests and a dry-run on pull requests; pushes to `main` and manual runs on `main` deploy to https://app.pingloom.workers.dev/. Changes to the source catalogue, assets, fonts or app renders also trigger this workflow.
 
-| Route | Description |
-|---|---|
-| `/` | Edge-rendered HTML landing page with Cloudflare cache headers |
-| `/api/status` | JSON endpoint returning Pingloom version, build health, and release URLs |
-| `/download/windows` | 302 redirect to Windows NSIS setup executable (`Pingloom_0.1.0_x64-setup.exe`) |
-| `/download/windows-portable` | 302 redirect to portable standalone executable (`pingloom.exe`) |
-| `/download/macos` | 302 redirect to macOS universal zip bundle (`pingloom-macos-universal.zip`) |
+GitHub Actions needs `CLOUDFLARE_API_TOKEN` with Workers edit permission and `CLOUDFLARE_ACCOUNT_ID` for the account owning the `pingloom.workers.dev` subdomain. A one-off MCP deployment does not configure those secrets.
 
----
+`public/` is generated and ignored; always run the build before invoking Wrangler directly.
 
-## Local Development
+Optional browser check (requires Playwright Core and Chromium, with the dev server running):
 
-```bash
-cd landing
-npm install
-npx wrangler dev
+```sh
+PLAYWRIGHT_MODULE=/path/to/playwright-core/index.mjs CHROME_PATH=/path/to/chrome node tests/browser.mjs
 ```
 
-Test dry-run bundle:
-```bash
-npx wrangler deploy --dry-run
-```
-
----
-
-## CI/CD Deployment to Cloudflare Workers
-
-Automated deployment is configured in `.github/workflows/deploy-landing.yml`.
-
-### Deployment Target
-- **URL**: `https://app.pingloom.workers.dev/`
-- **Worker**: `app` on the `pingloom` workers.dev subdomain.
-
-### Required GitHub Secrets
-Configure these in **GitHub Repository Settings → Secrets and variables → Actions**:
-
-1. `CLOUDFLARE_API_TOKEN`: Cloudflare API token with **Workers:Edit** permission.
-2. `CLOUDFLARE_ACCOUNT_ID` *(optional / recommended)*: Your Cloudflare account ID.
-
-### Workflow Triggers
-- Automatic deployment on `push` to `main` modifying `landing/**` or `.github/workflows/deploy-landing.yml`.
-- Dry-run validation on `pull_request`.
-- Manual trigger via `workflow_dispatch`.
+Checks desktop and 390/320px layouts, both asset catalogues, keyboard activation, drag/cancel, sound controls and reduced motion. Captures go to `.impeccable/review/landing/` at the repository root.
