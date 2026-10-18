@@ -20,7 +20,7 @@ No overlay is a WebView. No Node process or remote server runs in production.
 Run `Pingloom_0.1.0_x64-setup.exe` (per-user install with Start menu shortcut and
 uninstaller) or the portable `pingloom.exe`; open Settings from the tray. Both are
 unsigned, so SmartScreen may ask for confirmation.
-The legacy `%APPDATA%\Pingloom\settings.json` path remains unchanged.
+Settings persist at `%APPDATA%\Pingloom\settings.json`.
 Mica is Windows-only. Snap Layout hover on the HTML maximize button remains unsupported.
 
 ## Linux — Coming soon (source development only)

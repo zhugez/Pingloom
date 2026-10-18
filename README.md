@@ -109,8 +109,8 @@ Native V7 Wheel (offscreen native renderer on a test background, not an OS scree
 
 Legacy settings storage path and schema are preserved for backwards compatibility (unverified upgrade runtime):
 
-- **Persistence Path**: Settings persist at `%APPDATA%\Pingloom\settings.json`. The legacy directory and settings schema are preserved and verified via unit test `legacy_settings_path_remains_stable_for_compatibility` (live upgrade runtime untested).
-- **Application Identifier**: The Tauri application identifier is maintained as `com.pingloom.desktop` in `tauri.conf.json` for update continuity and legacy compatibility.
+- **Persistence Path**: Settings persist at `%APPDATA%\Pingloom\settings.json`. The directory and settings schema are preserved and verified via unit test `legacy_settings_path_remains_stable_for_compatibility` (live upgrade runtime untested).
+- **Application Identifier**: The Tauri application identifier is `com.pingloom.desktop` in `tauri.conf.json`.
 - **Linux/macOS Storage**: New per-user `pingloom/settings.json` files under the OS config directory; see [platform paths](docs/PLATFORMS.md).
 - **Native IPC & WM Classes**: Internal native Win32 window classes (`pingloom-main`, `pingloom-overlay`, `pingloom-settings`) use the new brand; IPC command structures remain stable.
 

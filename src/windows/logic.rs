@@ -30,7 +30,7 @@ pub fn effect_pop(age: f64, enter_seconds: f64) -> f64 {
     1.0 + 0.6 * (2.0 * t.powi(3) + t.powi(2))
 }
 
-/// Bundled WebP already contains its entrance, movement and exit (Pingloom's sheet).
+/// Bundled WebP already contains its entrance, movement and exit frames.
 /// Only a still fallback needs an external envelope; reduced motion uses that still.
 pub fn emote_envelope(age: f64, baked: bool, reduced: bool, pending: bool) -> (f64, f64) {
     if pending && !reduced {
@@ -484,7 +484,7 @@ mod tests {
     }
 
     #[test]
-    fn pingloom_motion_preserves_baked_animation_and_shared_ping_geometry() {
+    fn motion_preserves_baked_animation_and_shared_ping_geometry() {
         for age in [0.0, 0.1, 0.25, 1.4, 2.9] {
             assert_eq!(emote_envelope(age, true, false, false), (1.0, 1.0));
             assert_eq!(ping_art_motion(age, 0, 2, true), (0.0, 0.0, 1.0, 1.0));

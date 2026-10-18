@@ -1,6 +1,6 @@
 # Asset extraction
 
-`assets/sounds`, `assets/textures` and `assets/emotes` are extracted from a local League of Legends install. This tool regenerates them after a League patch changes the pings or emotes, or when you want to add new emotes to Pingloom / pingloom-rs.
+`assets/sounds`, `assets/textures` and `assets/emotes` are extracted from a local League of Legends install. This tool regenerates them after a League patch changes the pings or emotes, or when you want to add new emotes to Pingloom.
 
 ## Requirements
 

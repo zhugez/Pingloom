@@ -10,7 +10,7 @@ The approved UI migration supersedes earlier Rust-only/native-Settings restricti
 
 - Hold Alt/Ctrl and drag for eight-slice ping/emote wheels; release selects, centre/Escape/right-click cancels. Preserve ordinary input, replay and stuck-key prevention.
 - Configurable triggers, toggle shortcut, size, duration, volume, mute, assets and wheel assignments; validated settings and safe atomic persistence.
-- Embedded upstream artwork, animations and sounds with attribution; transparent, always-on-top, click-through overlays across monitors and negative coordinates.
+- Embedded artwork, animations and sounds with attribution; transparent, always-on-top, click-through overlays across monitors and negative coordinates.
 - Fullscreen-display gesture pause, tray settings/pause/resume/quit, keyboard-accessible Settings with Save/Cancel and field-directed errors.
 - One Settings WebView only. It communicates through narrowly scoped validated commands to the native owner; no arbitrary filesystem/path access, remote navigation, hosted endpoint, shell/plugin, or frontend authority over persistence/validation.
 
