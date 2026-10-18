@@ -38,6 +38,7 @@ for (const item of [...pings, ...emotes]) {
 for (const file of ['pingloom-sapphire-dark-preview.png', 'pingloom-native-wheel-v7.png']) await copy(`docs/media/${file}`, `images/${file}`);
 await copy('docs/media/brand/pingloom-mark-mono.svg', 'images/mark.svg');
 await copy('THIRD_PARTY_NOTICES.txt', 'THIRD_PARTY_NOTICES.txt');
+await writeFile(new URL('googled7ecf9fd7d293ff6.html', output), 'google-site-verification: googled7ecf9fd7d293ff6.html\n');
 for (const file of ['bricolage-grotesque-latin-wght-normal.woff2', 'plus-jakarta-sans-latin-wght-normal.woff2', 'OFL.txt', 'OFL-bricolage-grotesque.txt']) await copy(`ui/src/fonts/${file}`, `fonts/${file}`);
 for (const file of ['style.css', 'demo.js']) await copy(`landing/src/${file}`, file);
 await writeFile(new URL('catalog.json', output), JSON.stringify({ pings, emotes }));

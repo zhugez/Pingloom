@@ -21,8 +21,8 @@ Worker `pingloom` serves `/`, `/api/status`, `/robots.txt`, `/sitemap.xml`, `/do
 
 ## Search metadata and crawl endpoints
 
-- **Metadata**: Fixed self-canonical `https://pingloom.zhugez.workers.dev/`, OpenGraph and Twitter `summary_large_image` tags referencing the native wheel preview asset (`1004×502`), and Schema.org `SoftwareApplication` JSON-LD reflecting truthful free pricing and supported OS platforms without fabricated reviews or certifications.
-- **Crawl endpoints**: `/robots.txt` specifies normal allow with the absolute sitemap location; `/sitemap.xml` lists only the canonical homepage URL. Both endpoints are served directly by the Worker before static asset fallback.
+- **Metadata**: Fixed self-canonical `https://pingloom.zhugez.workers.dev/`, Google Search Console verification meta tag and `/googled7ecf9fd7d293ff6.html` route, OpenGraph and Twitter `summary_large_image` tags referencing the native wheel preview asset (`1004×502`), font/image preload hints in `<head>`, and Schema.org `SoftwareApplication` JSON-LD reflecting truthful free pricing, repository `sameAs` link, MIT license, and supported OS platforms without fabricated reviews or certifications.
+- **Crawl endpoints**: `/robots.txt` specifies normal allow with the absolute sitemap location; `/sitemap.xml` lists only the canonical homepage URL; `/llms.txt` provides structured markdown documentation for answer engines and AI search crawlers. Endpoints are served directly by the Worker before static asset fallback.
 - **Validation limitations**: Automated tests validate routing, headers, schema structure, checksum link targets and content offline. Cloudflare managed zones may return edge-level robots directives; local Worker responses do not guarantee or prove remote edge policy overrides.
 
 `.github/workflows/deploy-landing.yml` runs tests and a dry-run on pull requests; pushes to `main` and manual runs on `main` deploy to https://pingloom.zhugez.workers.dev/. Changes to the source catalogue, assets, fonts or app renders also trigger this workflow.

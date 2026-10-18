@@ -99,6 +99,10 @@ test('seo metadata, canonical, OpenGraph, Twitter and valid JSON-LD are served t
   assert.ok(html.includes('<link rel="canonical" href="https://pingloom.zhugez.workers.dev/">'));
   assert.ok(html.includes('<meta property="og:type" content="website">'));
   assert.ok(html.includes('<meta property="og:url" content="https://pingloom.zhugez.workers.dev/">'));
+  assert.ok(html.includes('<meta name="google-site-verification" content="googled7ecf9fd7d293ff6">'));
+  assert.ok(html.includes('<link rel="preload" href="/fonts/plus-jakarta-sans-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>'));
+  assert.ok(html.includes('<link rel="preload" href="/images/pingloom-native-wheel-v7.png" as="image" type="image/png" fetchpriority="high">'));
+  assert.ok(html.includes('<h1 id="hero-title"><span class="sr-only">Pingloom — </span>Eight directions.<br><span>One flick.</span></h1>'));
   const ogImage = 'https://pingloom.zhugez.workers.dev/images/pingloom-native-wheel-v7.png';
   assert.ok(html.includes(`<meta property="og:image" content="${ogImage}">`));
   assert.ok(html.includes('<meta property="og:image:width" content="1004">'));
@@ -119,6 +123,11 @@ test('seo metadata, canonical, OpenGraph, Twitter and valid JSON-LD are served t
   assert.equal(schema.offers?.price, '0');
   assert.equal(schema.offers?.priceCurrency, 'USD');
   assert.equal(schema.url, 'https://pingloom.zhugez.workers.dev/');
+  assert.equal(schema.sameAs, 'https://github.com/zhugez/pingloom');
+  assert.equal(schema.license, 'https://opensource.org/licenses/MIT');
+  assert.equal(schema.downloadUrl, 'https://pingloom.zhugez.workers.dev/#download');
+  assert.equal(schema.author?.name, 'zhugez');
+  assert.ok(Array.isArray(schema.featureList) && schema.featureList.length >= 4);
   assert.equal(schema.screenshot, ogImage);
   assert.equal(schema.aggregateRating, undefined);
   assert.equal(schema.review, undefined);
@@ -179,4 +188,23 @@ test('desktop usage instructions, platform signing disclosures and checksum link
   const overrideHtml = await (await worker.fetch(new Request('https://test/'), override)).text();
   assert.ok(overrideHtml.includes('https://github.com/zhugez/pingloom/releases/download/v0.1.0-test/BUILD_INFO-windows.txt'));
   assert.ok(overrideHtml.includes('https://github.com/zhugez/pingloom/releases/download/v0.1.0-test/BUILD_INFO-macos.txt'));
+});
+
+test('google search console verification and llms.txt endpoints are served correctly', async () => {
+  const gscRes = await worker.fetch(new Request('https://test/googled7ecf9fd7d293ff6.html'), {});
+  assert.equal(gscRes.status, 200);
+  assert.ok(gscRes.headers.get('content-type')?.includes('text/html'));
+  assert.ok(gscRes.headers.get('cache-control')?.includes('max-age'));
+  assert.equal(await gscRes.text(), 'google-site-verification: googled7ecf9fd7d293ff6.html\n');
+
+  const llmsRes = await worker.fetch(new Request('https://test/llms.txt'), {});
+  assert.equal(llmsRes.status, 200);
+  assert.ok(llmsRes.headers.get('content-type')?.includes('text/markdown'));
+  assert.ok(llmsRes.headers.get('cache-control')?.includes('max-age'));
+  const llms = await llmsRes.text();
+  assert.ok(llms.startsWith('# Pingloom'));
+  assert.ok(llms.includes('League of Legends'));
+  assert.ok(llms.includes('Windows 11 x64'));
+  assert.ok(llms.includes('macOS (Apple Silicon & Intel)'));
+  assert.ok(llms.includes('https://github.com/zhugez/pingloom'));
 });

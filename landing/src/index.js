@@ -3,6 +3,31 @@ const SITE_URL = 'https://pingloom.zhugez.workers.dev';
 const VERSION = '0.1.0';
 const RELEASE_TAG = 'v0.1.0-opt.2';
 
+const LLMS_TXT = `# Pingloom
+
+> Native desktop pings and animated emotes for League of Legends, independent of the game process.
+
+Pingloom is an open-source desktop application that places League of Legends tactical pings and animated emotes anywhere on your screen through an eight-slice radial gesture. Built with native Rust, it operates completely independent of the game process with zero memory injection or game client hooking.
+
+## Desktop Controls
+- **Activate & Drag**: Hold your keyboard trigger (default Alt for tactical pings, Ctrl for animated emotes) and drag outward with the left mouse button to open the radial wheel.
+- **Send**: Release the left mouse button outside the centre to trigger the selected ping or emote at your gesture origin.
+- **Cancel**: Release inside the central cancellation zone, press Escape, or click the right mouse button to abort without sending.
+
+## Platforms & Requirements
+- **Windows 11 x64**: Native Win32 hooks and layered overlays. Requires Evergreen WebView2 for Settings. Unsigned prerelease build.
+- **macOS (Apple Silicon & Intel)**: Native Quartz/AppKit backend. Ad-hoc signed, unnotarized experimental build requiring Accessibility permission.
+- **Linux**: Source backend retained; public binary packages paused.
+
+## Project Links & Documentation
+- [Homepage & Interactive Demo](https://pingloom.zhugez.workers.dev/): Browser preview of the 8-slice wheel and sound effects.
+- [GitHub Repository](https://github.com/zhugez/pingloom): Source code, issues, and release downloads.
+- [Gestures & Controls Guide](https://github.com/zhugez/pingloom#gestures--controls): Complete desktop gesture documentation.
+- [Platform Requirements](https://github.com/zhugez/pingloom/blob/main/docs/PLATFORMS.md): Operating system requirements and security permissions.
+- [Release Notes & Checksums](https://github.com/zhugez/pingloom/releases/tag/v0.1.0-opt.2): Verified CI build information and artifact hashes.
+- [Third-Party Notices](https://pingloom.zhugez.workers.dev/THIRD_PARTY_NOTICES.txt): Attribution for Riot Games assets and open-source fonts.
+`;
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -41,6 +66,26 @@ export default {
         },
       }
     );
+    if (url.pathname === '/googled7ecf9fd7d293ff6.html') return new Response(
+      'google-site-verification: googled7ecf9fd7d293ff6.html\n',
+      {
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'public, max-age=3600',
+          'X-Content-Type-Options': 'nosniff',
+        },
+      }
+    );
+    if (url.pathname === '/llms.txt') return new Response(
+      LLMS_TXT,
+      {
+        headers: {
+          'Content-Type': 'text/markdown; charset=utf-8',
+          'Cache-Control': 'public, max-age=3600',
+          'X-Content-Type-Options': 'nosniff',
+        },
+      }
+    );
     if (url.pathname !== '/') return env.ASSETS.fetch(request);
     return new Response(page(version, releaseTag, repo, SITE_URL), { headers: {
       'Content-Type': 'text/html; charset=utf-8',
@@ -64,6 +109,9 @@ function page(version, releaseTag, repo, siteUrl = SITE_URL) {
     operatingSystem: 'Windows 11, macOS',
     softwareVersion: version,
     url: `${siteUrl}/`,
+    sameAs: repo,
+    license: 'https://opensource.org/licenses/MIT',
+    downloadUrl: `${siteUrl}/#download`,
     image: ogImage,
     screenshot: ogImage,
     description,
@@ -72,6 +120,18 @@ function page(version, releaseTag, repo, siteUrl = SITE_URL) {
       price: '0',
       priceCurrency: 'USD',
     },
+    author: {
+      '@type': 'Person',
+      name: 'zhugez',
+      url: 'https://github.com/zhugez',
+    },
+    featureList: [
+      'Eight-slice radial selection wheel for tactical pings and animated emotes',
+      'Independent of game process with zero memory injection',
+      'Native Rust input hooks and transparent desktop overlays',
+      'Custom animated WebP and GIF emote import support',
+      'Theme-synced appearance matching the desktop Settings interface',
+    ],
   };
   const jsonLd = JSON.stringify(schema, null, 2).replace(/</g, '\\u003c');
   return `<!doctype html>
@@ -82,7 +142,10 @@ function page(version, releaseTag, repo, siteUrl = SITE_URL) {
   <meta name="color-scheme" content="dark">
   <title>${title}</title>
   <meta name="description" content="${description}">
+  <meta name="google-site-verification" content="googled7ecf9fd7d293ff6">
   <link rel="canonical" href="${siteUrl}/">
+  <link rel="preload" href="/fonts/plus-jakarta-sans-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/images/pingloom-native-wheel-v7.png" as="image" type="image/png" fetchpriority="high">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Pingloom">
   <meta property="og:title" content="${title}">
@@ -113,7 +176,7 @@ function page(version, releaseTag, repo, siteUrl = SITE_URL) {
   <main id="main" class="wrap">
     <section class="hero" aria-labelledby="hero-title">
       <div class="hero-copy">
-        <h1 id="hero-title">Eight directions.<br><span>One flick.</span></h1>
+        <h1 id="hero-title"><span class="sr-only">Pingloom — </span>Eight directions.<br><span>One flick.</span></h1>
         <p>Bring League of Legends tactical pings and animated emotes to your desktop with an eight-slice radial gesture. Runs natively in Rust, independent of the game process.</p>
         <a class="button primary large" href="#download">Get Pingloom</a>
         <a class="text-link" href="#playground">Give the Wheel a spin <span aria-hidden="true">↓</span></a>
