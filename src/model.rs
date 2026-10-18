@@ -155,7 +155,6 @@ pub const PING_ASSETS: [PingAsset; 11] = [
 
 pub const DEFAULT_CLICK_PING: PingId = PingId::Generic;
 pub const TICK_SOUND: &str = "button";
-pub const FALLBACK_TEXTURE: &str = "generic_ping";
 
 /// Built-in League emote asset slugs; each has `<slug>.png`, `<slug>.webp`, and `<slug>.ogg`.
 /// The slugs are persisted as settings identities and are also the on-disk asset names.
