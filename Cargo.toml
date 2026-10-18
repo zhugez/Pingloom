@@ -16,8 +16,9 @@ name = "pingloom"
 path = "src/main.rs"
 
 [features]
-default = ["desktop", "custom-protocol"]
-desktop = ["dep:tauri", "dep:include_dir", "dep:image", "dep:rodio", "dep:webp-animation", "dep:base64", "dep:rdev", "dep:x11rb", "dep:gtk", "dep:core-graphics", "dep:core-foundation", "dep:objc2", "dep:objc2-foundation"]
+default = ["desktop", "custom-protocol", "embed-assets"]
+embed-assets = ["dep:include_dir"]
+desktop = ["dep:tauri", "dep:image", "dep:rodio", "dep:webp-animation", "dep:base64", "dep:rdev", "dep:x11rb", "dep:gtk", "dep:core-graphics", "dep:core-foundation", "dep:objc2", "dep:objc2-foundation"]
 custom-protocol = ["tauri/custom-protocol"]
 
 [build-dependencies]
@@ -31,7 +32,7 @@ tempfile = "3"
 include_dir = { version = "0.7", optional = true }
 image = { version = "0.25", default-features = false, features = ["png", "gif", "jpeg", "webp"], optional = true }
 rodio = { version = "0.20", default-features = false, features = ["wav", "vorbis"], optional = true }
-webp-animation = { version = "0.10", features = ["static"], optional = true }
+webp-animation = { version = "0.10", features = ["static", "image"], optional = true }
 tauri = { version = "2", features = ["tray-icon", "macos-private-api", "unstable"], optional = true }
 base64 = { version = "0.22", optional = true }
 
@@ -63,6 +64,17 @@ windows-sys = { version = "0.59", features = [
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
 ] }
+
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = 0
+
+[profile.bench-ci]
+inherits = "release"
+lto = "off"
+codegen-units = 16
 
 [profile.release]
 lto = "fat"

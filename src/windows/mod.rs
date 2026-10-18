@@ -3,10 +3,7 @@ mod audio;
 pub(crate) mod desktop_settings;
 mod overlay;
 pub(crate) mod runtime_mailbox;
-#[allow(dead_code)]
-mod settings_window;
 
-use std::cell::RefCell;
 use std::mem::{size_of, zeroed};
 use std::path::PathBuf;
 use std::ptr::{null, null_mut};
@@ -16,7 +13,7 @@ use pingloom_core::model::{Action, Button, InputEvent, Point, Trigger, WheelKind
 use pingloom_core::settings::Settings;
 use pingloom_core::GestureEngine;
 
-use super::logic::{insert_replay_batch, settings_issue, take_deferred, ReplayInsertReport};
+use super::logic::{insert_replay_batch, ReplayInsertReport};
 use windows_sys::core::w;
 use windows_sys::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows_sys::Win32::Graphics::Gdi::{
@@ -40,7 +37,7 @@ use windows_sys::Win32::UI::Shell::{
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CallNextHookEx, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu,
-    DispatchMessageW, GetCursorPos, GetMessageW, LoadIconW, PeekMessageW, PostMessageW,
+    DispatchMessageW, GetCursorPos, GetMessageW, KillTimer, LoadIconW, PeekMessageW, PostMessageW,
     PostQuitMessage, RegisterClassW, RegisterWindowMessageW, SetForegroundWindow, SetTimer,
     SetWindowLongPtrW, SetWindowsHookExW, TrackPopupMenu, TranslateMessage, UnhookWindowsHookEx,
     CREATESTRUCTW, GWLP_USERDATA, GWL_STYLE, HC_ACTION, HHOOK, IDI_APPLICATION, KBDLLHOOKSTRUCT,
@@ -54,20 +51,17 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 
 use overlay::{AnimatedFrame, Overlay};
 use runtime_mailbox::{OwnerError, OwnerMailbox, OwnerRequest, RuntimeStatus, WM_OWNER_REQUEST};
-use settings_window::SettingsWindow;
 use std::sync::{mpsc, Arc};
 
 const SELF_MARKER: usize = 0x4c50_494e;
 const TIMER_FRAME: usize = 1;
 const TIMER_WATCHDOG: usize = 2;
+const TIMER_DISPLAY_CHANGE: usize = 3;
 const WM_TRAY: u32 = WM_APP + 10;
 const WM_INJECT: u32 = WM_APP + 11;
 const WM_ACTION: u32 = WM_APP + 12;
 const WM_FRAMES: u32 = WM_APP + 13;
-const APP_SETTINGS_MESSAGE: u32 = WM_APP + 14;
-const APP_SETTINGS_CLOSED: u32 = WM_APP + 15;
 const WM_REPLAY_FAILURE: u32 = WM_APP + 16;
-const WM_SETTINGS_FAILURE: u32 = WM_APP + 17;
 const ID_SETTINGS: i32 = 1;
 const ID_TOGGLE: i32 = 2;
 const ID_QUIT: i32 = 3;
@@ -75,17 +69,6 @@ const ID_QUIT: i32 = 3;
 static mut APPLICATION: *mut App = null_mut();
 /// Broadcast when Explorer (re)creates the taskbar; notification icons must be re-added.
 static mut TASKBAR_CREATED: u32 = 0;
-
-#[derive(Clone, Copy)]
-struct DeferredMainMessage {
-    message: u32,
-    wparam: WPARAM,
-    lparam: LPARAM,
-}
-
-thread_local! {
-    static DEFERRED_MAIN_MESSAGES: RefCell<Vec<DeferredMainMessage>> = const { RefCell::new(Vec::new()) };
-}
 
 struct QueuedAction {
     action: Action,
@@ -99,8 +82,8 @@ struct App {
     key_hook: HHOOK,
     engine: GestureEngine,
     overlay: Overlay,
+    frame_timer_on: bool,
     audio: audio::Audio,
-    settings_window: SettingsWindow,
     pending_inputs: Vec<ReplayInput>,
     native_keys_down: [bool; 256],
     tray_added: bool,
@@ -157,6 +140,7 @@ unsafe fn run_inner(
     app_handle: tauri::AppHandle,
     desktop_state: Arc<desktop_settings::DesktopSettingsState>,
 ) -> Result<(), String> {
+    crate::assets::validate()?;
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     let instance = GetModuleHandleW(null());
     if instance.is_null() {
@@ -181,9 +165,9 @@ unsafe fn run_inner(
         instance,
         mouse_hook: null_mut(),
         key_hook: null_mut(),
-        settings_window: SettingsWindow::new(settings_path),
         engine,
         overlay,
+        frame_timer_on: false,
         audio: audio::Audio::new(),
         pending_inputs: Vec::new(),
         native_keys_down: [false; 256],
@@ -221,11 +205,9 @@ unsafe fn run_inner(
     app.hwnd = hwnd;
     if let Err(error) = app.install_tray().and_then(|()| app.install_hooks()) {
         app.shutdown();
-        discard_deferred_main_messages();
         APPLICATION = null_mut();
         return Err(error);
     }
-    SetTimer(hwnd, TIMER_FRAME, 33, None);
     SetTimer(hwnd, TIMER_WATCHDOG, 500, None);
     mailbox.publish_hwnd(hwnd);
     if let Ok(mut slot) = app.desktop_state.mailbox.lock() {
@@ -240,132 +222,17 @@ unsafe fn run_inner(
         if result <= 0 {
             if result < 0 {
                 app.shutdown();
-                discard_deferred_main_messages();
                 APPLICATION = null_mut();
                 return Err("Windows message loop failed".into());
             }
             break;
         }
-        if app.settings_window.hwnd().is_null()
-            || windows_sys::Win32::UI::WindowsAndMessaging::IsDialogMessageW(
-                app.settings_window.hwnd(),
-                &message,
-            ) == 0
-        {
-            TranslateMessage(&message);
-            DispatchMessageW(&message);
-        }
-        dispatch_deferred_main_messages();
+        TranslateMessage(&message);
+        DispatchMessageW(&message);
     }
-    dispatch_deferred_main_messages();
     app.shutdown();
-    discard_deferred_main_messages();
     APPLICATION = null_mut();
     Ok(())
-}
-
-unsafe fn free_deferred_message(message: DeferredMainMessage) {
-    match message.message {
-        WM_ACTION => drop(Box::from_raw(message.lparam as *mut QueuedAction)),
-        WM_FRAMES => drop(Box::from_raw(
-            message.lparam as *mut (String, Vec<AnimatedFrame>),
-        )),
-        APP_SETTINGS_MESSAGE => drop(Box::from_raw(message.lparam as *mut Settings)),
-        _ => {}
-    }
-}
-
-pub(crate) fn queue_main_message(message: u32, wparam: WPARAM, lparam: LPARAM) -> bool {
-    if !SettingsWindow::callback_busy() {
-        return false;
-    }
-    DEFERRED_MAIN_MESSAGES.with(|queue| {
-        queue.borrow_mut().push(DeferredMainMessage {
-            message,
-            wparam,
-            lparam,
-        })
-    });
-    true
-}
-
-unsafe fn dispatch_deferred_main_messages() {
-    for _ in 0..8 {
-        let messages = DEFERRED_MAIN_MESSAGES.with(|queue| take_deferred(&mut *queue.borrow_mut()));
-        if messages.is_empty() {
-            break;
-        }
-        for message in messages {
-            match message.message {
-                WM_OWNER_REQUEST => {
-                    let app = APPLICATION;
-                    if !app.is_null() { (&mut *app).process_owner_requests(); }
-                }
-                APP_SETTINGS_MESSAGE => apply_settings_message(message.lparam),
-                WM_DISPLAYCHANGE => handle_display_change(),
-                m if is_taskbar_created(m) => restore_tray(),
-                WM_REPLAY_FAILURE => show_error("Windows could not replay one or more inputs. Gestures have been paused; use the tray to resume."),
-                WM_SETTINGS_FAILURE => show_error("Could not create the settings window."),
-                WM_INJECT | WM_ACTION | WM_FRAMES | APP_SETTINGS_CLOSED => {
-                    let app = APPLICATION;
-                    if app.is_null() {
-                        free_deferred_message(message);
-                    } else {
-                        let _ = (&mut *app).handle_message(
-                            message.message,
-                            message.wparam,
-                            message.lparam,
-                        );
-                    }
-                }
-                _ => free_deferred_message(message),
-            }
-        }
-    }
-}
-
-unsafe fn discard_deferred_main_messages() {
-    let messages = DEFERRED_MAIN_MESSAGES.with(|queue| take_deferred(&mut *queue.borrow_mut()));
-    if !messages.is_empty() {
-        output_debug_string(&format!(
-            "discarding {} deferred UI messages during shutdown",
-            messages.len()
-        ));
-    }
-    for message in messages {
-        free_deferred_message(message);
-    }
-}
-
-unsafe fn defer_during_settings_callback(message: u32, wparam: WPARAM, lparam: LPARAM) -> bool {
-    if !SettingsWindow::callback_busy() {
-        return false;
-    }
-    match message {
-        _ if matches!(
-            message,
-            WM_INJECT
-                | WM_ACTION
-                | WM_FRAMES
-                | APP_SETTINGS_MESSAGE
-                | APP_SETTINGS_CLOSED
-                | WM_REPLAY_FAILURE
-                | WM_SETTINGS_FAILURE
-                | WM_DISPLAYCHANGE
-        ) || is_taskbar_created(message) =>
-        {
-            DEFERRED_MAIN_MESSAGES.with(|queue| {
-                queue.borrow_mut().push(DeferredMainMessage {
-                    message,
-                    wparam,
-                    lparam,
-                })
-            });
-        }
-        WM_TIMER | WM_TRAY | WM_OWNER_REQUEST => {}
-        _ => return false,
-    }
-    true
 }
 
 fn safe_custom_trigger(trigger: Trigger) -> bool {
@@ -566,9 +433,9 @@ impl App {
     }
 
     unsafe fn resync_native_keys(&mut self) {
-        let settings = self.settings().clone();
         for vk in 0..=u8::MAX {
-            if !super::logic::swallowed_trigger_key(&settings, vk)
+            if self.native_keys_down[usize::from(vk)]
+                && !super::logic::swallowed_trigger_key(self.engine.settings(), vk)
                 && GetAsyncKeyState(i32::from(vk)) >= 0
             {
                 self.native_keys_down[usize::from(vk)] = false;
@@ -579,10 +446,14 @@ impl App {
     unsafe fn update_wheel_state(&mut self, action: Action) -> bool {
         match action {
             Action::WheelOpen { wheel, origin } => {
-                self.overlay.wheel_open(wheel, origin, dpi_scale_at(origin));
+                if !self.engine.settings().muted {
+                    self.audio.warm();
+                }
+                self.overlay
+                    .wheel_open(wheel, origin, self.engine.gesture_scale());
             }
             Action::WheelMove { point, .. } => {
-                let settings = self.settings().clone();
+                let settings = self.engine.settings();
                 if self.overlay.wheel_move(point) && settings.tick_sound {
                     let volume = if settings.muted {
                         0.0
@@ -595,7 +466,27 @@ impl App {
             Action::Cancel => self.overlay.wheel_close(),
             _ => return false,
         }
+        // Arm once; repeated SetTimer calls would restart the frame period.
+        self.sync_frame_timer();
         true
+    }
+
+    unsafe fn sync_frame_timer(&mut self) {
+        let active = self.overlay.is_active();
+        if active && !self.frame_timer_on {
+            if SetTimer(self.hwnd, TIMER_FRAME, 33, None) != 0 {
+                self.frame_timer_on = true;
+                PostMessageW(self.hwnd, WM_TIMER, TIMER_FRAME, 0);
+            }
+        } else if !active && self.frame_timer_on {
+            KillTimer(self.hwnd, TIMER_FRAME);
+            self.frame_timer_on = false;
+            self.overlay.tick(self.engine.settings());
+        }
+    }
+    unsafe fn render_overlay(&mut self) {
+        self.overlay.tick(self.engine.settings());
+        self.sync_frame_timer();
     }
 
     unsafe fn handle_action(&mut self, queued: QueuedAction) {
@@ -651,7 +542,7 @@ impl App {
             Action::Cancel => self.overlay.wheel_close(),
             Action::Toggled { .. } => self.update_tray_status(),
         }
-        self.overlay.tick(&settings);
+        self.render_overlay();
     }
 
     unsafe fn spawn_emote(&mut self, slug: &str, point: Point, size: u16) {
@@ -663,7 +554,11 @@ impl App {
                 .spawn(move || {
                     let hwnd = hwnd as HWND;
                     // An empty completion releases the pending state into its still fallback.
-                    let frames = overlay::decode_emote(&decoding_slug).unwrap_or_default();
+                    let frames = crate::animation::decode_emote_sized(
+                        &decoding_slug,
+                        (f64::from(size) * 1.25) as u32,
+                    )
+                    .unwrap_or_default();
                     let raw = Box::into_raw(Box::new((decoding_slug, frames)));
                     if PostMessageW(hwnd, WM_FRAMES, 0, raw as LPARAM) == 0 {
                         drop(Box::from_raw(raw));
@@ -733,6 +628,9 @@ impl App {
                 OwnerRequest::Query(reply) => {
                     let _ = reply.send(Ok((self.settings().clone(), self.owner_status())));
                 }
+                OwnerRequest::Status(reply) => {
+                    let _ = reply.send(Ok(self.owner_status()));
+                }
                 OwnerRequest::Barrier(reply) => {
                     // Settings lifecycle orders requests, but never pauses or cancels input.
                     let _ = reply.send(Ok(()));
@@ -740,37 +638,6 @@ impl App {
                 OwnerRequest::Save(settings, reply) => {
                     let settings = *settings;
                     let result = (|| {
-                        if let Some(issue) = settings_issue(&settings) {
-                            let field = match issue {
-                                super::logic::SettingsIssue::TriggerConflict => "trigger".into(),
-                                super::logic::SettingsIssue::ToggleModifiers => {
-                                    "toggle_hotkey.mods".into()
-                                }
-                                super::logic::SettingsIssue::ToggleKeyConflict => {
-                                    "toggle_hotkey.vk".into()
-                                }
-                                super::logic::SettingsIssue::DragThreshold => {
-                                    "drag_threshold_px".into()
-                                }
-                                super::logic::SettingsIssue::PingSize => "ping_size_px".into(),
-                                super::logic::SettingsIssue::PingDuration => {
-                                    "ping_duration_s".into()
-                                }
-                                super::logic::SettingsIssue::Volume => "volume".into(),
-                                super::logic::SettingsIssue::EmoteSize => "emote_size_px".into(),
-                                super::logic::SettingsIssue::DuplicatePingSlot(slot) => {
-                                    format!("wheel.{slot}")
-                                }
-                                super::logic::SettingsIssue::DuplicateEmoteSlot(slot) => {
-                                    format!("emote_wheel.{slot}")
-                                }
-                            };
-                            return Err(OwnerError {
-                                code: "validation",
-                                message: format!("Settings conflict: {issue:?}"),
-                                field: Some(field),
-                            });
-                        }
                         settings.validate().map_err(|error| OwnerError {
                             code: "validation",
                             message: error.to_string(),
@@ -809,8 +676,7 @@ impl App {
                         self.apply_decision(decision, false, None);
                         self.drain_injections();
                         self.load_warning = None;
-                        let applied_settings = self.settings().clone();
-                        self.overlay.tick(&applied_settings);
+                        self.render_overlay();
                         self.update_tray_status();
                         Ok(self.owner_status())
                     })();
@@ -846,13 +712,18 @@ impl App {
             WM_FRAMES => {
                 let (slug, frames) = *Box::from_raw(lparam as *mut (String, Vec<AnimatedFrame>));
                 self.overlay.set_emote_frames(&slug, frames);
+                self.render_overlay();
                 Some(0)
             }
-            // Dormant native Settings notifications are untagged; only desktop lifecycle ACKs may resume hooks.
-            APP_SETTINGS_CLOSED => Some(0),
             WM_TIMER if wparam == TIMER_FRAME => {
-                let settings = self.settings().clone();
-                self.overlay.tick(&settings);
+                let _trace = crate::trace::probe(crate::trace::Metric::FrameTick);
+                self.render_overlay();
+                Some(0)
+            }
+            WM_TIMER if wparam == TIMER_DISPLAY_CHANGE => {
+                KillTimer(self.hwnd, TIMER_DISPLAY_CHANGE);
+                self.overlay.refresh_display();
+                self.render_overlay();
                 Some(0)
             }
             WM_TIMER if wparam == TIMER_WATCHDOG => {
@@ -1023,29 +894,6 @@ unsafe fn handle_tray_message(event: u32) {
     }
 }
 
-unsafe fn apply_settings_message(lparam: LPARAM) {
-    let settings = *Box::from_raw(lparam as *mut Settings);
-    let app = APPLICATION;
-    if app.is_null() {
-        return;
-    }
-    let error = {
-        let app = &mut *app;
-        match app.engine.set_settings(settings) {
-            Ok(decision) => {
-                app.apply_decision(decision, false, None);
-                let settings = app.settings().clone();
-                app.overlay.tick(&settings);
-                None
-            }
-            Err(error) => Some(error.to_string()),
-        }
-    };
-    if let Some(error) = error {
-        show_error(&error);
-    }
-}
-
 unsafe fn is_taskbar_created(message: u32) -> bool {
     message != 0 && message == TASKBAR_CREATED
 }
@@ -1064,10 +912,10 @@ unsafe fn handle_display_change() {
     if app.is_null() {
         return;
     }
-    let instance = (*app).instance;
-    match Overlay::new(instance) {
-        Ok(overlay) => (*app).overlay = overlay,
-        Err(error) => show_error(&error),
+    // SetTimer resets an existing timer: a burst produces one geometry refresh.
+    if SetTimer((*app).hwnd, TIMER_DISPLAY_CHANGE, 250, None) == 0 {
+        (&mut *app).overlay.refresh_display();
+        (&mut *app).render_overlay();
     }
 }
 
@@ -1086,12 +934,6 @@ unsafe extern "system" fn main_proc(
         PostQuitMessage(0);
         return 0;
     }
-    if SettingsWindow::callback_busy() {
-        if defer_during_settings_callback(message, wparam, lparam) {
-            return 0;
-        }
-        return DefWindowProcW(hwnd, message, wparam, lparam);
-    }
     match message {
         WM_TRAY => {
             handle_tray_message(lparam as u32);
@@ -1102,10 +944,6 @@ unsafe extern "system" fn main_proc(
             if !app.is_null() {
                 (&mut *app).process_owner_requests();
             }
-            0
-        }
-        APP_SETTINGS_MESSAGE => {
-            apply_settings_message(lparam);
             0
         }
         WM_DISPLAYCHANGE => {
@@ -1120,14 +958,11 @@ unsafe extern "system" fn main_proc(
             show_error("Windows could not replay one or more inputs. Gestures have been paused; use the tray to resume.");
             0
         }
-        WM_SETTINGS_FAILURE => {
-            show_error("Could not create the settings window.");
-            0
-        }
         _ if matches!(
             message,
-            WM_INJECT | WM_ACTION | WM_FRAMES | APP_SETTINGS_CLOSED | WM_OWNER_REQUEST
-        ) || message == WM_TIMER && matches!(wparam, TIMER_FRAME | TIMER_WATCHDOG) =>
+            WM_INJECT | WM_ACTION | WM_FRAMES | WM_OWNER_REQUEST
+        ) || message == WM_TIMER
+            && matches!(wparam, TIMER_FRAME | TIMER_WATCHDOG | TIMER_DISPLAY_CHANGE) =>
         {
             let app = APPLICATION;
             if app.is_null() {
@@ -1141,9 +976,7 @@ unsafe extern "system" fn main_proc(
 }
 
 unsafe extern "system" fn mouse_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
-    if SettingsWindow::callback_busy() {
-        return CallNextHookEx(null_mut(), code, wparam, lparam);
-    }
+    let _trace = crate::trace::probe(crate::trace::Metric::Mouse);
     if code != HC_ACTION as i32 {
         return CallNextHookEx(null_mut(), code, wparam, lparam);
     }
@@ -1196,7 +1029,6 @@ unsafe extern "system" fn mouse_proc(code: i32, wparam: WPARAM, lparam: LPARAM) 
                 .resync_key_states(|vk| GetAsyncKeyState(i32::from(vk)) < 0);
             app.resync_native_keys();
             let candidate = app.engine.enabled()
-                && app.settings_window.hwnd().is_null()
                 && super::logic::gesture_candidate(app.settings(), button, |vk| {
                     app.native_keys_down[usize::from(vk)]
                 });
@@ -1244,9 +1076,7 @@ unsafe extern "system" fn mouse_proc(code: i32, wparam: WPARAM, lparam: LPARAM) 
 }
 
 unsafe extern "system" fn key_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
-    if SettingsWindow::callback_busy() {
-        return CallNextHookEx(null_mut(), code, wparam, lparam);
-    }
+    let _trace = crate::trace::probe(crate::trace::Metric::Keyboard);
     if code != HC_ACTION as i32 {
         return CallNextHookEx(null_mut(), code, wparam, lparam);
     }

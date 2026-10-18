@@ -93,6 +93,21 @@ impl GestureEngine {
         self.enabled
     }
 
+    /// Presentation must use the same origin-monitor scale captured for hit testing.
+    pub fn gesture_scale(&self) -> f64 {
+        self.selection_scale
+    }
+
+    /// A fullscreen probe is expensive on Unix; ordinary clicks must never query it.
+    pub fn needs_fullscreen_probe(&self, button: Button) -> bool {
+        self.active()
+            && self.settings.game_check
+            && self.state == GestureState::Idle
+            && !self.foreign_key
+            && self.starts_gesture(WheelKind::Ping, button)
+                != self.starts_gesture(WheelKind::Emote, button)
+    }
+
     pub fn set_settings(&mut self, settings: Settings) -> Result<InputDecision, SettingsError> {
         settings.validate()?;
         let mut decision = InputDecision::default();
@@ -619,6 +634,26 @@ mod tests {
         }
     }
 
+    #[test]
+    fn fullscreen_probe_only_for_eligible_trigger_presses() {
+        let mut engine = engine();
+        assert!(!engine.needs_fullscreen_probe(Button::Left));
+        engine.on_event(key_down(ALT));
+        assert!(engine.needs_fullscreen_probe(Button::Left));
+        assert!(!engine.needs_fullscreen_probe(Button::Right));
+        engine.on_event(down(Button::Left, 100, 100, 10));
+        assert!(!engine.needs_fullscreen_probe(Button::Left));
+        let mut engine = super::GestureEngine::new(Settings {
+            game_check: false,
+            ..Settings::default()
+        })
+        .unwrap();
+        engine.on_event(key_down(ALT));
+        assert!(!engine.needs_fullscreen_probe(Button::Left));
+        engine.set_enabled(false);
+        assert!(!engine.needs_fullscreen_probe(Button::Left));
+    }
+
     fn open_wheel(engine: &mut GestureEngine) {
         engine.on_event(key_down(ALT));
         assert!(engine.on_event(down(Button::Left, 100, 100, 100)).swallow);
@@ -719,6 +754,7 @@ mod tests {
         };
         assert!(engine.on_event(down_at_scale(1)).swallow);
         let move_inside = engine.on_event(movement(220, 100, 2));
+        assert_eq!(engine.gesture_scale(), 1.5);
         assert_eq!(
             move_inside.actions[1],
             Action::WheelMove {

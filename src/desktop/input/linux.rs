@@ -233,6 +233,13 @@ pub(super) fn run(shared: Arc<Shared>) -> Result<(), String> {
     super::validate(&initial).map_err(|e| e.message)?;
     shared.ready();
     rdev::grab(move |event| {
+        if matches!(event.event_type, EventType::MouseMove { .. })
+            && !shared
+                .gesture_busy
+                .load(std::sync::atomic::Ordering::Acquire)
+        {
+            return Some(event);
+        }
         let time_ms = shared.time_ms();
         // rdev's evdev coordinates ignore acceleration. Keyboard input needs no X11 query.
         let point = if matches!(
@@ -266,7 +273,7 @@ pub(super) fn run(shared: Arc<Shared>) -> Result<(), String> {
                 point,
                 time_ms,
                 injected: false,
-                fullscreen_app: display.fullscreen(point),
+                fullscreen_app: shared.needs_fullscreen_probe(button) && display.fullscreen(point),
                 dpi_scale: shared.scale_at(point),
             }),
             EventType::ButtonRelease(b) => {

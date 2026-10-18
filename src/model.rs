@@ -155,7 +155,6 @@ pub const PING_ASSETS: [PingAsset; 11] = [
 
 pub const DEFAULT_CLICK_PING: PingId = PingId::Generic;
 pub const TICK_SOUND: &str = "button";
-pub const FALLBACK_TEXTURE: &str = "generic_ping";
 
 /// Built-in League emote asset slugs; each has `<slug>.png`, `<slug>.webp`, and `<slug>.ogg`.
 /// The slugs are persisted as settings identities and are also the on-disk asset names.
@@ -326,6 +325,33 @@ pub enum Action {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_shipped_ping_texture_and_sound_is_referenced() {
+        let textures: std::collections::HashSet<_> = PING_ASSETS
+            .iter()
+            .flat_map(|a| std::iter::once(a.icon).chain(a.art.iter().copied()))
+            .chain(["pingloom-wheel-labels"])
+            .collect();
+        let sounds: std::collections::HashSet<_> = PING_ASSETS
+            .iter()
+            .map(|a| a.sound)
+            .chain([TICK_SOUND])
+            .collect();
+        for (directory, used) in [("textures", textures), ("sounds", sounds)] {
+            let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("assets")
+                .join(directory);
+            let orphans: Vec<_> = std::fs::read_dir(root)
+                .unwrap()
+                .map(Result::unwrap)
+                .filter(|e| e.file_type().unwrap().is_file())
+                .filter(|e| !used.contains(e.path().file_stem().unwrap().to_str().unwrap()))
+                .map(|e| e.file_name())
+                .collect();
+            assert!(orphans.is_empty(), "unreferenced {directory}: {orphans:?}");
+        }
+    }
 
     #[test]
     fn asset_identity_tables_match_enum_order_and_default_assignments() {

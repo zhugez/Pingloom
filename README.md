@@ -183,7 +183,7 @@ Physical Linux/macOS gesture, permission, overlay and mixed-DPI acceptance is al
 Real Windows 11 visual and runtime smoke testing has **not** been executed on this development host. Specifically:
 - Windows-specific mailbox, hook pump, and session tests compile under `x86_64-pc-windows-gnu`, but native Win32 window message loops were not executed on a live Windows desktop.
 - Native CI-built downloads are available above; they do not establish physical input latency, RAM consumption under load or successful desktop acceptance.
-- Embedded assets (textures, WebP emotes, and audio clips) total approximately 55 MiB; expect an appropriately sized executable.
+- Artwork/audio total about 55 MiB. Windows portable and default source builds embed them; macOS release bundles store them once under `Contents/Resources/assets` so the universal executable does not duplicate them per architecture. Keep the complete `.app` bundle when copying it.
 
 ### Windows 11 Pre-Release Manual Smoke Checklist
 

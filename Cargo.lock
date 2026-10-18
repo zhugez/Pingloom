@@ -4488,6 +4488,7 @@ version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dcf0c124cbce8c045bc972736d9f9f116bbd8243fd75ea1b68db429d809de44d"
 dependencies = [
+ "image",
  "libwebp-sys2 0.2.0",
  "log",
 ]
