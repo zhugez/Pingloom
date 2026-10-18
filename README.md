@@ -3,7 +3,17 @@
   <img src="docs/media/brand/pingloom-wordmark-dark.png#gh-dark-mode-only" alt="Pingloom" width="360" />
 </h1>
 
+<p align="center"><strong>Eight directions. One flick.</strong><br />Native desktop pings and animated emotes, independent of the game client.</p>
+
 <p align="center">
+  <a href="https://app.pingloom.workers.dev/">Website &amp; interactive demo</a> ·
+  <a href="#download--v010-prerelease">Download</a> ·
+  <a href="docs/PLATFORMS.md">Platform guide</a> ·
+  <a href="https://github.com/zhugez/pingloom/issues">Report an issue</a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/zhugez/pingloom/actions/workflows/deploy-landing.yml"><img src="https://github.com/zhugez/pingloom/actions/workflows/deploy-landing.yml/badge.svg?branch=main" alt="Landing page build and deployment status" /></a>
   <a href="https://learn.microsoft.com/en-us/windows/release-health/windows11-release-information"><img src="https://img.shields.io/badge/Platform-Windows%2011%20x64-0078D4?logo=windows11&logoColor=white" alt="Platform" /></a>
   <a href="docs/PLATFORMS.md"><img src="https://img.shields.io/badge/Linux-Coming%20soon-FCC624?logo=linux&logoColor=black" alt="Linux coming soon" /></a>
   <a href="docs/PLATFORMS.md"><img src="https://img.shields.io/badge/macOS-experimental-444444?logo=apple&logoColor=white" alt="macOS experimental" /></a>
@@ -16,9 +26,17 @@
 
 Pingloom places League of Legends tactical pings and animated emotes on your desktop through quick radial gestures, independent of the game client. Available for Windows, with an experimental macOS backend. **Linux: Coming soon** — public builds are temporarily paused. See [platform requirements and permissions](docs/PLATFORMS.md).
 
-Native Rust owns latency-sensitive low-level keyboard/mouse hooks, input replay, gesture state machine, transparent layered overlays, animated WebP playback, audio effects, and notification tray icon. Settings is a single bundled local Tauri 2 WebView built with Svelte 5, Vite, daisyUI, `@lucide/svelte`, and local SIL OFL variable Plus Jakarta Sans typography. Overlays and hooks are native: Win32 on Windows, evdev/X11 + GTK/Cairo on Linux, and Quartz + AppKit on macOS—not WebViews. Pingloom is not a website, hosted service, SaaS dashboard, or production Node application.
+Native Rust owns latency-sensitive low-level keyboard/mouse hooks, input replay, gesture state machine, transparent layered overlays, animated WebP playback, audio effects, and notification tray icon. Settings is a single bundled local Tauri 2 WebView built with Svelte 5, Vite, daisyUI, `@lucide/svelte`, and local SIL OFL variable Plus Jakarta Sans typography. Overlays and hooks are native: Win32 on Windows, evdev/X11 + GTK/Cairo on Linux, and Quartz + AppKit on macOS—not WebViews. Pingloom itself is a desktop app, not a hosted service or production Node application. The [public website](https://app.pingloom.workers.dev/) provides downloads and an interactive browser preview; it does not run desktop input or overlays.
 
 ---
+
+## Try it in your browser
+
+Visit **[app.pingloom.workers.dev](https://app.pingloom.workers.dev/)** to try both eight-slice Wheels with the desktop app’s actual ping/emote artwork and optional bundled audio. The site uses one Loom Night / Pingloom Blush theme, with native Wheel renders and a rendered Settings preview.
+
+The browser demo supports drag-to-select, centre cancellation, keyboard activation and reduced motion. It is a gesture preview, not a native desktop capture or performance benchmark.
+
+The site is hosted on Cloudflare Workers. [Landing CI](https://github.com/zhugez/pingloom/actions/workflows/deploy-landing.yml) builds assets from the desktop catalogue, runs tests and validates the bundle before deploying changes from `main`. [Development and deployment guide](landing/README.md).
 
 ## Download — v0.1.0 prerelease
 
