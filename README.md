@@ -220,7 +220,6 @@ Before distributing `pingloom.exe` on Windows 11, verify the following manual te
 ## Attribution & Legal Notices
 
 - **License**: Pingloom source code is released under the [MIT License](LICENSE).
-- **Upstream Credit**: This rewrite is based on and acknowledges [Pingloom](https://github.com/zhugez/Pingloom) by zhugez at commit [`f24a51e5a11c2b31dab72d89a571cc4025ad3c98`](https://github.com/zhugez/Pingloom/tree/f24a51e5a11c2b31dab72d89a571cc4025ad3c98). Upstream MIT attribution is retained in `THIRD_PARTY_NOTICES.txt` and `LICENSE`.
 - **Riot Games Assets**: Bundled League of Legends ping textures, sound effects, and emote graphics are © Riot Games, Inc. and are **not** covered by the MIT license. Bundling within this project grants no redistribution rights; verify usage rights before redistributing. Pingloom is not endorsed by Riot Games and does not reflect the views or opinions of Riot Games or anyone officially involved in producing or managing League of Legends properties.
 - **Font Assets**: Bundled variable fonts for **Plus Jakarta Sans** are licensed under the SIL Open Font License 1.1.
 - **Issues & Contributions**: Issue tracking and pull requests are managed at [`zhugez/pingloom`](https://github.com/zhugez/pingloom).

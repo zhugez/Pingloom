@@ -15,4 +15,3 @@ This directory stores visual documentation and UI preview artifacts for Pingloom
 
 - **UI Typography**: Bundled local WOFF2 variable fonts for **Plus Jakarta Sans** (weights 200..800, normal and italic), licensed under the [SIL Open Font License 1.1](https://openfontlicense.org/).
 - **League Assets**: Ping icons and emote graphics are © Riot Games, Inc. and are not covered by the MIT license. Not endorsed by Riot Games.
-- **Upstream Credit**: Radial layout and wheel interaction concepts adapted from [Pingloom](https://github.com/zhugez/Pingloom) (MIT License).
