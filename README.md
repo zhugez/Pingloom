@@ -42,13 +42,13 @@ The site is hosted on Cloudflare Workers. [Landing CI](https://github.com/zhugez
 
 | Platform | Download | Requirements |
 | --- | --- | --- |
-| Windows 11 x64 | [Installer](https://github.com/zhugez/pingloom/releases/download/v0.1.0/Pingloom_0.1.0_x64-setup.exe) · [portable exe](https://github.com/zhugez/pingloom/releases/download/v0.1.0/pingloom.exe) | Evergreen WebView2; unsigned |
+| Windows 11 x64 | [Installer](https://github.com/zhugez/pingloom/releases/download/v0.1.0-opt.2/Pingloom_0.1.0_x64-setup.exe) · [portable exe](https://github.com/zhugez/pingloom/releases/download/v0.1.0-opt.2/pingloom.exe) | Evergreen WebView2; unsigned |
 | Linux | **Coming soon** | Public builds and downloads temporarily paused; source backend retained |
-| macOS (Apple Silicon + Intel) | [App ZIP](https://github.com/zhugez/pingloom/releases/download/v0.1.0/pingloom-macos-universal.zip) | Accessibility; ad-hoc signed, not notarized; experimental |
+| macOS (Apple Silicon + Intel) | [App ZIP](https://github.com/zhugez/pingloom/releases/download/v0.1.0-opt.2/pingloom-macos-universal.zip) | Accessibility; ad-hoc signed, not notarized; experimental |
 
-[Release notes, build provenance and SHA-256 checksums](https://github.com/zhugez/pingloom/releases/tag/v0.1.0).
+[Release notes, build provenance and SHA-256 checksums](https://github.com/zhugez/pingloom/releases/tag/v0.1.0-opt.2).
 
-**Version stays at 0.1.0 while the prerelease is refreshed.** Download again to get the latest UI and fixes, even if your installed app also reports 0.1.0. Distinguish builds using the attached build commit/checksum. Earlier v0.2.x prereleases have been consolidated here. See [platform setup](docs/PLATFORMS.md) before running.
+**The app and displayed version remain v0.1.0.** README and website downloads select the same prerelease build; use the attached build commit and SHA-256 checksums to identify it. See [platform setup](docs/PLATFORMS.md) before running.
 
 ## Why Pingloom?
 

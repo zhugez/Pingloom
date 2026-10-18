@@ -17,7 +17,13 @@ Images are labelled by provenance: the native Wheel image is a native renderer r
 
 ## Deployment
 
-Worker `pingloom` serves `/`, `/api/status`, `/download/windows`, `/download/windows-portable`, `/download/macos` and locally hosted static assets via the `ASSETS` binding in `wrangler.toml`.
+Worker `pingloom` serves `/`, `/api/status`, `/robots.txt`, `/sitemap.xml`, `/download/windows`, `/download/windows-portable`, `/download/macos` and locally hosted static assets via the `ASSETS` binding in `wrangler.toml`. Worker configuration in `wrangler.toml` separates the visible application version (`PINGLOOM_VERSION = "0.1.0"`) from the distribution release tag (`PINGLOOM_RELEASE_TAG = "v0.1.0-opt.2"`).
+
+## Search metadata and crawl endpoints
+
+- **Metadata**: Fixed self-canonical `https://pingloom.zhugez.workers.dev/`, OpenGraph and Twitter `summary_large_image` tags referencing the native wheel preview asset (`1004×502`), and Schema.org `SoftwareApplication` JSON-LD reflecting truthful free pricing and supported OS platforms without fabricated reviews or certifications.
+- **Crawl endpoints**: `/robots.txt` specifies normal allow with the absolute sitemap location; `/sitemap.xml` lists only the canonical homepage URL. Both endpoints are served directly by the Worker before static asset fallback.
+- **Validation limitations**: Automated tests validate routing, headers, schema structure, checksum link targets and content offline. Cloudflare managed zones may return edge-level robots directives; local Worker responses do not guarantee or prove remote edge policy overrides.
 
 `.github/workflows/deploy-landing.yml` runs tests and a dry-run on pull requests; pushes to `main` and manual runs on `main` deploy to https://pingloom.zhugez.workers.dev/. Changes to the source catalogue, assets, fonts or app renders also trigger this workflow.
 

@@ -89,6 +89,7 @@ h2 { font-size: clamp(34px, 4vw, 52px); letter-spacing: -.025em; }
 .gesture-steps li > span { font: 700 24px var(--display); color: var(--accent); }
 .gesture-steps strong { font-size: 13px; }
 .gesture-steps p { color: var(--muted); font-size: 12px; margin-top: 4px; }
+.gesture-note { color: var(--muted); font-size: 12px; margin-top: 24px; max-width: 72ch; line-height: 1.55; }
 .app-section { display: grid; grid-template-columns: .75fr 1.25fr; align-items: center; gap: 64px; padding: 112px 0; }
 .app-copy p { color: var(--muted); font-size: 14px; margin: 24px 0; max-width: 40ch; }
 .app-preview { min-width: 0; }
@@ -97,10 +98,14 @@ h2 { font-size: clamp(34px, 4vw, 52px); letter-spacing: -.025em; }
 .downloads { padding: 64px; border-radius: 36px; background: var(--surface); }
 .downloads > p { color: var(--muted); margin-top: 16px; font-size: 13px; }
 .download-options { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; margin: 40px 0; }
-.download-options h3 { font-size: 26px; }
-.download-options h3 small { color: var(--muted); font: 500 11px 'Plus Jakarta Sans', sans-serif; }
-.download-options p { color: var(--muted); font-size: 12px; margin: 12px 0 22px; }
-.download-options .text-link { margin-left: 16px; }
+.download-card h3 { font-size: 26px; }
+.download-card h3 small { color: var(--muted); font: 500 11px 'Plus Jakarta Sans', sans-serif; }
+.download-requirements { color: var(--muted); font-size: 12px; margin: 12px 0 20px; }
+.download-cta { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; margin-bottom: 16px; }
+.download-warning { color: var(--muted); font-size: 12px; line-height: 1.55; margin: 0 0 12px; }
+.download-verify { font-size: 11px; color: var(--muted); margin: 0; }
+.download-verify a { text-decoration: underline; text-underline-offset: 4px; }
+.download-verify a:hover { color: var(--accent); }
 footer { padding: 40px 0; }
 .footer-top { display: flex; align-items: center; gap: 24px; font-size: 12px; }
 .footer-top > a:last-child { margin-left: auto; }
@@ -112,7 +117,7 @@ footer p { color: var(--muted); font-size: 10px; margin-top: 18px; }
   .hero-copy > .text-link { display: table; margin: 16px 0 0; }
   .app-section { gap: 32px; }
   .downloads { padding: 40px; }
-  .download-options .text-link { display: table; margin: 16px 0 0; }
+  .download-options { gap: 36px; }
 }
 @media (max-width: 700px) {
   .wrap { width: calc(100% - 36px); }

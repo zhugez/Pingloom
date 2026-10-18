@@ -16,6 +16,7 @@ try {
     await page.locator('.wheel-node').first().waitFor();
     assert.equal(await page.locator('.wheel-node').count(), 8);
     assert.equal(await page.locator('select').count(), 0);
+    assert.equal(await page.locator('link[rel="canonical"]').getAttribute('href'), 'https://pingloom.zhugez.workers.dev/');
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `${width}px overflow`);
     const catalog = await (await page.request.get(`${base}/catalog.json`)).json();
     for (const mode of ['pings', 'emotes']) {

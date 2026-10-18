@@ -1,25 +1,48 @@
 const REPO = 'https://github.com/zhugez/pingloom';
-const VERSION = '0.1.0-opt.2';
+const SITE_URL = 'https://pingloom.zhugez.workers.dev';
+const VERSION = '0.1.0';
+const RELEASE_TAG = 'v0.1.0-opt.2';
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const version = env.PINGLOOM_VERSION || VERSION;
+    const releaseTag = env.PINGLOOM_RELEASE_TAG || RELEASE_TAG;
     const repo = env.GITHUB_REPO || REPO;
     const downloads = {
-      windows: `${repo}/releases/download/v${version}/Pingloom_0.1.0_x64-setup.exe`,
-      'windows-portable': `${repo}/releases/download/v${version}/pingloom.exe`,
-      macos: `${repo}/releases/download/v${version}/pingloom-macos-universal.zip`,
+      windows: `${repo}/releases/download/${releaseTag}/Pingloom_0.1.0_x64-setup.exe`,
+      'windows-portable': `${repo}/releases/download/${releaseTag}/pingloom.exe`,
+      macos: `${repo}/releases/download/${releaseTag}/pingloom-macos-universal.zip`,
     };
     const platform = url.pathname.slice('/download/'.length);
     if (url.pathname.startsWith('/download/') && Object.hasOwn(downloads, platform)) return Response.redirect(downloads[platform], 302);
     if (url.pathname === '/api/status') return Response.json({
-      project: 'Pingloom', version, status: 'prerelease', edge_region: request.cf?.colo || 'EDGE',
-      runtime: 'Cloudflare Workers', github: repo, deployment_url: 'https://pingloom.zhugez.workers.dev',
+      project: 'Pingloom', version, release_tag: releaseTag, status: 'prerelease', edge_region: request.cf?.colo || 'EDGE',
+      runtime: 'Cloudflare Workers', github: repo, deployment_url: SITE_URL,
       downloads: { windows_installer: downloads.windows, windows_portable: downloads['windows-portable'], macos_universal: downloads.macos },
     }, { headers: { 'Access-Control-Allow-Origin': '*' } });
+    if (url.pathname === '/robots.txt') return new Response(
+      `User-agent: *\nAllow: /\n\nSitemap: ${SITE_URL}/sitemap.xml\n`,
+      {
+        headers: {
+          'Content-Type': 'text/plain; charset=utf-8',
+          'Cache-Control': 'public, max-age=3600',
+          'X-Content-Type-Options': 'nosniff',
+        },
+      }
+    );
+    if (url.pathname === '/sitemap.xml') return new Response(
+      `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  <url>\n    <loc>${SITE_URL}/</loc>\n  </url>\n</urlset>\n`,
+      {
+        headers: {
+          'Content-Type': 'application/xml; charset=utf-8',
+          'Cache-Control': 'public, max-age=3600',
+          'X-Content-Type-Options': 'nosniff',
+        },
+      }
+    );
     if (url.pathname !== '/') return env.ASSETS.fetch(request);
-    return new Response(page(version), { headers: {
+    return new Response(page(version, releaseTag, repo, SITE_URL), { headers: {
       'Content-Type': 'text/html; charset=utf-8',
       'Cache-Control': 'public, max-age=0, must-revalidate',
       'X-Content-Type-Options': 'nosniff',
@@ -29,24 +52,61 @@ export default {
   },
 };
 
-function page(version) {
+function page(version, releaseTag, repo, siteUrl = SITE_URL) {
+  const title = 'Desktop Pings & Animated Emotes | Pingloom';
+  const description = 'Place League of Legends tactical pings and animated emotes on your desktop with an eight-slice radial gesture. Native Rust app, independent of the game process.';
+  const ogImage = `${siteUrl}/images/pingloom-native-wheel-v7.png`;
+  const schema = {
+    '@context': 'https://schema.org',
+    '@type': 'SoftwareApplication',
+    name: 'Pingloom',
+    applicationCategory: 'UtilitiesApplication',
+    operatingSystem: 'Windows 11, macOS',
+    softwareVersion: version,
+    url: `${siteUrl}/`,
+    image: ogImage,
+    screenshot: ogImage,
+    description,
+    offers: {
+      '@type': 'Offer',
+      price: '0',
+      priceCurrency: 'USD',
+    },
+  };
+  const jsonLd = JSON.stringify(schema, null, 2).replace(/</g, '\\u003c');
   return `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
-  <title>Pingloom — Eight directions. One flick.</title>
-  <meta name="description" content="Desktop pings and animated emotes, one gesture away. A native radial Wheel with locally bundled artwork and a familiar hold, drag, release gesture.">
+  <title>${title}</title>
+  <meta name="description" content="${description}">
+  <link rel="canonical" href="${siteUrl}/">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Pingloom">
+  <meta property="og:title" content="${title}">
+  <meta property="og:description" content="${description}">
+  <meta property="og:url" content="${siteUrl}/">
+  <meta property="og:image" content="${ogImage}">
+  <meta property="og:image:width" content="1004">
+  <meta property="og:image:height" content="502">
+  <meta property="og:image:alt" content="Pingloom native eight-slice Ping and Emote Wheels with bundled artwork">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="${title}">
+  <meta name="twitter:description" content="${description}">
+  <meta name="twitter:image" content="${ogImage}">
+  <meta name="twitter:image:alt" content="Pingloom native eight-slice Ping and Emote Wheels with bundled artwork">
   <link rel="icon" href="/images/mark.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/style.css">
+  <script type="application/ld+json">${jsonLd}</script>
   <script src="/demo.js" type="module"></script>
 </head>
 <body>
   <a class="skip" href="#main">Skip to content</a>
   <header class="header wrap">
     <a class="brand" href="/" aria-label="Pingloom home"><span class="brand-mark" aria-hidden="true"></span>Pingloom</a>
-    <nav aria-label="Main navigation"><a href="#playground">Try the Wheel</a><a href="#app">The app</a><a href="${REPO}">Source</a></nav>
+    <nav aria-label="Main navigation"><a href="#playground">Try the Wheel</a><a href="#app">The app</a><a href="${repo}">Source</a></nav>
     <a class="button primary" href="#download">Download</a>
   </header>
 
@@ -54,7 +114,7 @@ function page(version) {
     <section class="hero" aria-labelledby="hero-title">
       <div class="hero-copy">
         <h1 id="hero-title">Eight directions.<br><span>One flick.</span></h1>
-        <p>A little more expression for your desktop. Drop a ping. Send an emote. All with a familiar hold, drag, release.</p>
+        <p>Bring League of Legends tactical pings and animated emotes to your desktop with an eight-slice radial gesture. Runs natively in Rust, independent of the game process.</p>
         <a class="button primary large" href="#download">Get Pingloom</a>
         <a class="text-link" href="#playground">Give the Wheel a spin <span aria-hidden="true">↓</span></a>
         <p class="availability">Windows · Experimental macOS · Free &amp; open source</p>
@@ -98,27 +158,45 @@ function page(version) {
         </div>
       </div>
       <ol class="gesture-steps">
-        <li><span>1</span><div><strong>Hold your trigger</strong><p>Choose a key or mouse button in Settings.</p></div></li>
-        <li><span>2</span><div><strong>Pick a direction</strong><p>Drag toward a ping or emote on the Wheel.</p></div></li>
-        <li><span>3</span><div><strong>Release to send</strong><p>Or return to the centre to cancel.</p></div></li>
+        <li><span>1</span><div><strong>Hold your trigger key</strong><p>Hold your keyboard trigger (default Alt for pings, Ctrl for emotes).</p></div></li>
+        <li><span>2</span><div><strong>Drag with the left mouse button</strong><p>Keep the trigger held, press the left mouse button and drag toward a slice.</p></div></li>
+        <li><span>3</span><div><strong>Release left mouse to send</strong><p>Release the left mouse button outside the centre to send. Release inside the central cancellation zone, press Escape, or right-click to cancel.</p></div></li>
       </ol>
+      <p class="gesture-note">Desktop controls use a held keyboard trigger and left mouse drag; mouse-button triggers drag with that same button. Pings and emotes appear at the initial mouse-press origin on your desktop. The browser preview above lets you test slices directly without holding keys. See the <a href="${repo}#gestures--controls">usage guide</a> and <a href="${repo}/blob/main/docs/PLATFORMS.md">platform requirements</a>.</p>
     </section>
 
     <section id="app" class="app-section" aria-labelledby="app-title">
-      <div class="app-copy"><h2 id="app-title">Make it<br>feel like you.</h2><p>Choose your trigger. Arrange your eight slices. Import your own emote images. Preview your changes before saving.</p><p>The Wheel and overlays run natively in Rust. Settings live in a bundled Tauri WebView, not on this website.</p><a class="text-link" href="${REPO}#readme">Explore the desktop app <span aria-hidden="true">↗</span></a></div>
+      <div class="app-copy"><h2 id="app-title">Make it<br>feel like you.</h2><p>Choose your trigger. Arrange your eight slices. Import your own emote images. Preview your changes before saving.</p><p>The Wheel and overlays run natively in Rust. Settings live in a bundled Tauri WebView, not on this website.</p><a class="text-link" href="${repo}#readme">Explore the desktop app <span aria-hidden="true">↗</span></a></div>
       <figure class="app-preview bezel"><img src="/images/pingloom-sapphire-dark-preview.png" alt="Rendered Pingloom Settings in Loom Night: Tactical Pings, the eight-slice Wheel and selected Danger artwork" width="960" height="720" loading="lazy"><figcaption>Actual Settings UI render · Loom Night / Pingloom Blush</figcaption></figure>
     </section>
 
     <section id="download" class="downloads" aria-labelledby="download-title">
-      <h2 id="download-title">A gesture away.</h2><p>Pingloom ${version} · Prerelease</p>
+      <h2 id="download-title">A gesture away.</h2><p>Pingloom v${version} · Prerelease</p>
       <div class="download-options">
-        <div><h3>Windows</h3><p>Windows 11 x64 · Requires Evergreen WebView2.</p><a class="button primary" href="/download/windows">Download installer</a><a class="text-link" href="/download/windows-portable">Portable .exe</a></div>
-        <div><h3>macOS <small>Experimental</small></h3><p>Apple Silicon &amp; Intel. Requires native input permissions.</p><a class="button secondary" href="/download/macos">Download universal .zip</a></div>
+        <div class="download-card">
+          <h3>Windows</h3>
+          <p class="download-requirements">Windows 11 x64 · Requires Evergreen WebView2.</p>
+          <div class="download-cta">
+            <a class="button primary" href="/download/windows">Download installer</a>
+            <a class="text-link" href="/download/windows-portable">Portable .exe</a>
+          </div>
+          <p class="download-warning">Unsigned prerelease build. Windows SmartScreen may show an unrecognized app prompt on first run.</p>
+          <p class="download-verify"><a href="${repo}/releases/download/${releaseTag}/BUILD_INFO-windows.txt">Windows checksum &amp; build info</a> · <a href="${repo}/blob/main/docs/PLATFORMS.md#windows">Windows platform guide</a></p>
+        </div>
+        <div class="download-card">
+          <h3>macOS <small>Experimental</small></h3>
+          <p class="download-requirements">Apple Silicon &amp; Intel universal binary.</p>
+          <div class="download-cta">
+            <a class="button secondary" href="/download/macos">Download universal .zip</a>
+          </div>
+          <p class="download-warning">Ad-hoc signed, unnotarized experimental build. Gatekeeper may ask for approval in Privacy &amp; Security. Gestures need Accessibility and, if prompted, Input Monitoring.</p>
+          <p class="download-verify"><a href="${repo}/releases/download/${releaseTag}/BUILD_INFO-macos.txt">macOS checksum &amp; build info</a> · <a href="${repo}/blob/main/docs/PLATFORMS.md#macos">macOS platform guide</a></p>
+        </div>
       </div>
-      <p class="download-note">Linux packages: coming soon. <a href="${REPO}/blob/main/docs/PLATFORMS.md">Platform requirements</a> · <a href="${REPO}/releases">Release notes</a></p>
+      <p class="download-note">Linux packages: coming soon. <a href="${repo}/blob/main/docs/PLATFORMS.md">Platform requirements</a> · <a href="${repo}/releases/tag/${releaseTag}">Release notes</a></p>
     </section>
   </main>
-  <footer class="wrap"><div class="footer-top"><a class="brand" href="/">Pingloom</a><span>Free &amp; open source. Code under MIT.</span><a href="${REPO}">View source</a></div><p>League ping and emote artwork © Riot Games, Inc. Not endorsed by Riot Games. <a href="/THIRD_PARTY_NOTICES.txt">Third-party notices</a>.</p></footer>
+  <footer class="wrap"><div class="footer-top"><a class="brand" href="/">Pingloom</a><span>Free &amp; open source. Code under MIT.</span><a href="${repo}">View source</a></div><p>League ping and emote artwork © Riot Games, Inc. Not endorsed by Riot Games. <a href="/THIRD_PARTY_NOTICES.txt">Third-party notices</a>.</p></footer>
 </body>
 </html>`;
 }
