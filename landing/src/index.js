@@ -15,7 +15,7 @@ export default {
     if (url.pathname.startsWith('/download/') && Object.hasOwn(downloads, platform)) return Response.redirect(downloads[platform], 302);
     if (url.pathname === '/api/status') return Response.json({
       project: 'Pingloom', version, status: 'prerelease', edge_region: request.cf?.colo || 'EDGE',
-      runtime: 'Cloudflare Workers', github: repo, deployment_url: 'https://app.pingloom.workers.dev',
+      runtime: 'Cloudflare Workers', github: repo, deployment_url: 'https://pingloom.zhugez.workers.dev',
       downloads: { windows_installer: downloads.windows, windows_portable: downloads['windows-portable'], macos_universal: downloads.macos },
     }, { headers: { 'Access-Control-Allow-Origin': '*' } });
     if (url.pathname !== '/') return env.ASSETS.fetch(request);

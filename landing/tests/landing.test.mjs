@@ -46,6 +46,8 @@ test('download redirects and status remain available; unknown paths go to static
   }
   const status = await (await worker.fetch(new Request('https://test/api/status'), {})).json();
   assert.equal(status.project, 'Pingloom');
+  assert.equal(status.deployment_url, 'https://pingloom.zhugez.workers.dev');
+  assert.match(await readFile(new URL('../wrangler.toml', import.meta.url), 'utf8'), /^name = "pingloom"$/m);
   const response = await worker.fetch(new Request('https://test/missing'), { ASSETS: { fetch: () => new Response('Not found', { status: 404 }) } });
   assert.equal(response.status, 404);
 });

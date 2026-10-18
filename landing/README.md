@@ -17,11 +17,11 @@ Images are labelled by provenance: the native Wheel image is a native renderer r
 
 ## Deployment
 
-Worker `app` serves `/`, `/api/status`, `/download/windows`, `/download/windows-portable`, `/download/macos` and locally hosted static assets via the `ASSETS` binding in `wrangler.toml`.
+Worker `pingloom` serves `/`, `/api/status`, `/download/windows`, `/download/windows-portable`, `/download/macos` and locally hosted static assets via the `ASSETS` binding in `wrangler.toml`.
 
-`.github/workflows/deploy-landing.yml` runs tests and a dry-run on pull requests; pushes to `main` and manual runs on `main` deploy to https://app.pingloom.workers.dev/. Changes to the source catalogue, assets, fonts or app renders also trigger this workflow.
+`.github/workflows/deploy-landing.yml` runs tests and a dry-run on pull requests; pushes to `main` and manual runs on `main` deploy to https://pingloom.zhugez.workers.dev/. Changes to the source catalogue, assets, fonts or app renders also trigger this workflow.
 
-GitHub Actions needs `CLOUDFLARE_API_TOKEN` with Workers edit permission and `CLOUDFLARE_ACCOUNT_ID` for the account owning the `pingloom.workers.dev` subdomain. A one-off MCP deployment does not configure those secrets.
+GitHub Actions needs `CLOUDFLARE_API_TOKEN` with Workers edit permission and `CLOUDFLARE_ACCOUNT_ID` for the account owning the `zhugez.workers.dev` subdomain. A one-off MCP deployment does not configure those secrets.
 
 `public/` is generated and ignored; always run the build before invoking Wrangler directly.
 
