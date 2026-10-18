@@ -5,9 +5,9 @@ on:
     branches: [main]
     tags: ['v*']
     # docs/media/brand contains a bundled SVG, so do not ignore all of docs/**.
-    paths-ignore: ['**.md', 'CONTEXT.md']
+    paths-ignore: ['**.md', 'CONTEXT.md', 'landing/**']
   pull_request:
-    paths-ignore: ['**.md', 'CONTEXT.md']
+    paths-ignore: ['**.md', 'CONTEXT.md', 'landing/**']
   workflow_dispatch:
 
 concurrency:

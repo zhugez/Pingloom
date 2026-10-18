@@ -1,0 +1,14 @@
+{
+  "name": "pingloom-landing",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "Cloudflare Worker hosting Pingloom landing page",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^3.114.0"
+  }
+}

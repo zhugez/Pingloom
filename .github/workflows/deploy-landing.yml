@@ -1,0 +1,80 @@
+name: Deploy Landing Page
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'landing/**'
+      - '.github/workflows/deploy-landing.yml'
+  pull_request:
+    paths:
+      - 'landing/**'
+      - '.github/workflows/deploy-landing.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate Worker Bundle
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: landing
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: landing/package.json
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Validate bundle (dry-run)
+        run: npx wrangler deploy --dry-run
+
+  deploy:
+    name: Deploy to Cloudflare Workers (https://app.pingloom.workers.dev/)
+    needs: validate
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: landing
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: landing/package.json
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Deploy to Cloudflare Workers
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: 'landing'
+          command: deploy
+
+      - name: Deployment Summary
+        run: |
+          echo "### 🚀 Landing Page Deployed" >> $GITHUB_STEP_SUMMARY
+          echo "Worker: \`app\`" >> $GITHUB_STEP_SUMMARY
+          echo "URL: https://app.pingloom.workers.dev/" >> $GITHUB_STEP_SUMMARY
