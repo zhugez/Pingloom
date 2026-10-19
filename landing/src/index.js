@@ -236,7 +236,7 @@ function page(version, releaseTag, repo, siteUrl = SITE_URL) {
           <p id="demo-error" role="alert" hidden>Could not load the preview. Refresh the page to try again.</p>
         </div></div>
         <div class="selection">
-          <div class="effect-stage" id="effect-stage"><img id="selected-art" src="/assets/textures/pingwheel_retreatrender.png" width="160" height="160" alt="" loading="lazy" decoding="async" hidden></div>
+          <div class="effect-stage" id="effect-stage"><picture id="selected-picture"><source id="selected-source" srcset="/assets/textures/pingwheel_retreatrender.webp" type="image/webp"><img id="selected-art" src="/assets/textures/pingwheel_retreatrender.png" width="160" height="160" alt="" loading="lazy" decoding="async" hidden></picture></div>
           <p class="direction" id="direction">N · North</p>
           <h3 id="selected-name">Danger</h3>
           <p id="selection-help">Artwork and sound from the desktop app. Select a slice to preview what it sends.</p>

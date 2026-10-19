@@ -31,6 +31,8 @@ function highlight(slot) {
 function inspect(slot) {
   selected = slot;
   const item = catalog[mode][slot];
+  const source = document.querySelector('#selected-source');
+  if (source) source.srcset = item.image.replace(/\.png$/, '.webp');
   art.src = item.image;
   art.alt = item.name;
   art.hidden = false;
@@ -43,7 +45,10 @@ function preview(slot) {
   inspect(slot);
   highlight(slot);
   const item = catalog[mode][slot];
-  art.src = reducedMotion.matches ? item.image : item.effect;
+  const source = document.querySelector('#selected-source');
+  const effectUrl = reducedMotion.matches ? item.image : item.effect;
+  if (source) source.srcset = effectUrl.endsWith('.png') ? effectUrl.replace(/\.png$/, '.webp') : effectUrl;
+  art.src = effectUrl;
   stage.classList.remove('playing');
   void stage.offsetWidth;
   stage.classList.add('playing');
@@ -68,6 +73,11 @@ function render() {
     const [x, y] = point(156, index * Math.PI / 4);
     node.style.left = `${x / 460 * 100}%`;
     node.style.top = `${y / 460 * 100}%`;
+    const picture = document.createElement('picture');
+    const source = document.createElement('source');
+    source.srcset = item.image.replace(/\.png$/, '.webp');
+    source.type = 'image/webp';
+    picture.append(source);
     const image = document.createElement('img');
     image.src = item.image;
     image.alt = '';
@@ -76,7 +86,8 @@ function render() {
     image.decoding = 'async';
     image.width = 58;
     image.height = 58;
-    node.append(image);
+    picture.append(image);
+    node.append(picture);
     // Native button activation covers keyboard and assistive technology; pointer release is handled below.
     node.addEventListener('click', event => { if (event.detail === 0) preview(index); });
     nodes.append(node);

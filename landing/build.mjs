@@ -34,7 +34,14 @@ async function copy(source, destination) {
   await copyFile(new URL(source, root), target);
 }
 for (const item of [...pings, ...emotes]) {
-  for (const key of ['image', 'effect', 'sound']) await copy(item[key].slice(1), item[key].slice(1));
+  for (const key of ['image', 'effect', 'sound']) {
+    await copy(item[key].slice(1), item[key].slice(1));
+    if (item[key].endsWith('.png')) {
+      const src = fileURLToPath(new URL(item[key].slice(1), root));
+      const dest = fileURLToPath(new URL(item[key].slice(1).replace(/\.png$/, '.webp'), output));
+      await sharp(src).webp({ quality: 90, effort: 6 }).toFile(dest);
+    }
+  }
 }
 for (const file of ['pingloom-sapphire-dark-preview.png', 'pingloom-native-wheel-v7.png']) {
   await copy(`docs/media/${file}`, `images/${file}`);
