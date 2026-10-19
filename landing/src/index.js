@@ -166,6 +166,7 @@ function page(version, releaseTag, repo, siteUrl = SITE_URL) {
   <link rel="preload" href="/fonts/plus-jakarta-sans-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/fonts/bricolage-grotesque-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/images/pingloom-native-wheel-v7-640.webp" imagesrcset="/images/pingloom-native-wheel-v7-640.webp 640w, /images/pingloom-native-wheel-v7.webp 1004w" imagesizes="(max-width: 700px) calc(100vw - 36px), 630px" as="image" type="image/webp" fetchpriority="high">
+  <link rel="modulepreload" href="/demo.js">
   <script id="catalog-data" type="application/json">${JSON.stringify(catalog)}</script>
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Pingloom">

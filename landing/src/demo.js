@@ -143,8 +143,10 @@ const embeddedCatalog = document.getElementById('catalog-data');
 if (embeddedCatalog) {
   try {
     catalog = JSON.parse(embeddedCatalog.textContent);
-    render();
-    replay.disabled = false;
+    requestAnimationFrame(() => {
+      render();
+      replay.disabled = false;
+    });
   } catch {
     document.querySelector('#demo-error').hidden = false;
   }
@@ -153,8 +155,10 @@ if (embeddedCatalog) {
     const response = await fetch('/catalog.json');
     if (!response.ok) throw new Error('Catalogue unavailable');
     catalog = await response.json();
-    render();
-    replay.disabled = false;
+    requestAnimationFrame(() => {
+      render();
+      replay.disabled = false;
+    });
   } catch {
     document.querySelector('#demo-error').hidden = false;
   }
