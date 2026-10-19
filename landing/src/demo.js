@@ -72,6 +72,10 @@ function render() {
     image.src = item.image;
     image.alt = '';
     image.draggable = false;
+    image.loading = 'lazy';
+    image.decoding = 'async';
+    image.width = 58;
+    image.height = 58;
     node.append(image);
     // Native button activation covers keyboard and assistive technology; pointer release is handled below.
     node.addEventListener('click', event => { if (event.detail === 0) preview(index); });
@@ -135,12 +139,23 @@ for (const button of document.querySelectorAll('[data-mode]')) {
     announcement.textContent = `${mode === 'pings' ? 'Tactical Pings' : 'Emotes'} Wheel selected.`;
   });
 }
-try {
-  const response = await fetch('/catalog.json');
-  if (!response.ok) throw new Error('Catalogue unavailable');
-  catalog = await response.json();
-  render();
-  replay.disabled = false;
-} catch {
-  document.querySelector('#demo-error').hidden = false;
+const embeddedCatalog = document.getElementById('catalog-data');
+if (embeddedCatalog) {
+  try {
+    catalog = JSON.parse(embeddedCatalog.textContent);
+    render();
+    replay.disabled = false;
+  } catch {
+    document.querySelector('#demo-error').hidden = false;
+  }
+} else {
+  try {
+    const response = await fetch('/catalog.json');
+    if (!response.ok) throw new Error('Catalogue unavailable');
+    catalog = await response.json();
+    render();
+    replay.disabled = false;
+  } catch {
+    document.querySelector('#demo-error').hidden = false;
+  }
 }

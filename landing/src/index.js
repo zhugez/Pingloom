@@ -1,3 +1,5 @@
+import catalog from './catalog.json' with { type: 'json' };
+
 const REPO = 'https://github.com/zhugez/pingloom';
 const SITE_URL = 'https://pingloom.zhugez.workers.dev';
 const VERSION = '0.1.0';
@@ -159,7 +161,7 @@ function page(version, releaseTag, repo, siteUrl = SITE_URL) {
   <link rel="preload" href="/fonts/plus-jakarta-sans-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/fonts/bricolage-grotesque-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/images/pingloom-native-wheel-v7-640.webp" imagesrcset="/images/pingloom-native-wheel-v7-640.webp 640w, /images/pingloom-native-wheel-v7.webp 1004w" imagesizes="(max-width: 700px) calc(100vw - 36px), 630px" as="image" type="image/webp" fetchpriority="high">
-  <link rel="preload" href="/catalog.json" as="fetch" crossorigin>
+  <script id="catalog-data" type="application/json">${JSON.stringify(catalog)}</script>
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Pingloom">
   <meta property="og:title" content="${title}">
@@ -229,7 +231,7 @@ function page(version, releaseTag, repo, siteUrl = SITE_URL) {
           <p id="demo-error" role="alert" hidden>Could not load the preview. Refresh the page to try again.</p>
         </div></div>
         <div class="selection">
-          <div class="effect-stage" id="effect-stage"><img id="selected-art" src="/assets/textures/pingwheel_retreatrender.png" width="160" height="160" alt="" hidden></div>
+          <div class="effect-stage" id="effect-stage"><img id="selected-art" src="/assets/textures/pingwheel_retreatrender.png" width="160" height="160" alt="" loading="lazy" decoding="async" hidden></div>
           <p class="direction" id="direction">N · North</p>
           <h3 id="selected-name">Danger</h3>
           <p id="selection-help">Artwork and sound from the desktop app. Select a slice to preview what it sends.</p>

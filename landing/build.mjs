@@ -55,5 +55,7 @@ await copy('THIRD_PARTY_NOTICES.txt', 'THIRD_PARTY_NOTICES.txt');
 await writeFile(new URL('googled7ecf9fd7d293ff6.html', output), 'google-site-verification: googled7ecf9fd7d293ff6.html\n');
 for (const file of ['bricolage-grotesque-latin-wght-normal.woff2', 'plus-jakarta-sans-latin-wght-normal.woff2', 'OFL.txt', 'OFL-bricolage-grotesque.txt']) await copy(`ui/src/fonts/${file}`, `fonts/${file}`);
 for (const file of ['style.css', 'demo.js']) await copy(`landing/src/${file}`, file);
-await writeFile(new URL('catalog.json', output), JSON.stringify({ pings, emotes }));
+const catalogJson = JSON.stringify({ pings, emotes });
+await writeFile(new URL('catalog.json', output), catalogJson);
+await writeFile(new URL('catalog.json', new URL('./src/', import.meta.url)), catalogJson);
 console.log(`Prepared desktop assets in ${fileURLToPath(output)}`);
