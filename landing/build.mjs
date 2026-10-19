@@ -39,10 +39,14 @@ for (const item of [...pings, ...emotes]) {
     if (item[key].endsWith('.png')) {
       const src = fileURLToPath(new URL(item[key].slice(1), root));
       const dest = fileURLToPath(new URL(item[key].slice(1).replace(/\.png$/, '.webp'), output));
-      await sharp(src).webp({ quality: 90, effort: 6 }).toFile(dest);
+      await sharp(src).webp({ quality: 80, effort: 6 }).toFile(dest);
     }
   }
 }
+await sharp(fileURLToPath(new URL('assets/textures/pingwheel_retreatrender.png', root)))
+  .resize(160, 160)
+  .webp({ quality: 80, effort: 6 })
+  .toFile(fileURLToPath(new URL('assets/textures/pingwheel_retreatrender-160.webp', output)));
 for (const file of ['pingloom-sapphire-dark-preview.png', 'pingloom-native-wheel-v7.png']) {
   await copy(`docs/media/${file}`, `images/${file}`);
   const base = file.replace(/\.png$/, '');
