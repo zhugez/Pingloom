@@ -1,4 +1,5 @@
 import catalog from './catalog.json' with { type: 'json' };
+import style from './style.js';
 
 const REPO = 'https://github.com/zhugez/pingloom';
 const SITE_URL = 'https://pingloom.zhugez.workers.dev';
@@ -92,12 +93,16 @@ export default {
       const assetResponse = await env.ASSETS.fetch(request);
       if (assetResponse.status !== 200) return assetResponse;
       const response = new Response(assetResponse.body, assetResponse);
-      if (url.pathname.startsWith('/fonts/') || url.pathname.startsWith('/assets/')) {
+      if (
+        url.pathname.startsWith('/fonts/') ||
+        url.pathname.startsWith('/assets/') ||
+        url.pathname.startsWith('/images/') ||
+        url.pathname.endsWith('.css') ||
+        url.pathname.endsWith('.js')
+      ) {
         response.headers.set('Cache-Control', 'public, max-age=31536000, immutable');
-      } else if (url.pathname.startsWith('/images/')) {
-        response.headers.set('Cache-Control', 'public, max-age=604800, stale-while-revalidate=86400');
-      } else if (url.pathname.endsWith('.css') || url.pathname.endsWith('.js') || url.pathname.endsWith('.json')) {
-        response.headers.set('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400');
+      } else if (url.pathname.endsWith('.json')) {
+        response.headers.set('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
       }
       return response;
     }
@@ -177,9 +182,8 @@ function page(version, releaseTag, repo, siteUrl = SITE_URL) {
   <meta name="twitter:image" content="${ogImage}">
   <meta name="twitter:image:alt" content="Pingloom native eight-slice Ping and Emote Wheels with bundled artwork">
   <link rel="icon" href="/images/mark.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/style.css">
+  <style>${style}</style>
   <script type="application/ld+json">${jsonLd}</script>
-  <script src="/demo.js" type="module"></script>
 </head>
 <body>
   <a class="skip" href="#main">Skip to content</a>
@@ -285,6 +289,7 @@ function page(version, releaseTag, repo, siteUrl = SITE_URL) {
     </section>
   </main>
   <footer class="wrap"><div class="footer-top"><a class="brand" href="/">Pingloom</a><span>Free &amp; open source. Code under MIT.</span><a href="${repo}">View source</a></div><p>League ping and emote artwork © Riot Games, Inc. Not endorsed by Riot Games. <a href="/THIRD_PARTY_NOTICES.txt">Third-party notices</a>.</p></footer>
+  <script src="/demo.js" type="module"></script>
 </body>
 </html>`;
 }
