@@ -86,7 +86,19 @@ export default {
         },
       }
     );
-    if (url.pathname !== '/') return env.ASSETS.fetch(request);
+    if (url.pathname !== '/') {
+      const assetResponse = await env.ASSETS.fetch(request);
+      if (assetResponse.status !== 200) return assetResponse;
+      const response = new Response(assetResponse.body, assetResponse);
+      if (url.pathname.startsWith('/fonts/') || url.pathname.startsWith('/assets/')) {
+        response.headers.set('Cache-Control', 'public, max-age=31536000, immutable');
+      } else if (url.pathname.startsWith('/images/')) {
+        response.headers.set('Cache-Control', 'public, max-age=604800, stale-while-revalidate=86400');
+      } else if (url.pathname.endsWith('.css') || url.pathname.endsWith('.js') || url.pathname.endsWith('.json')) {
+        response.headers.set('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400');
+      }
+      return response;
+    }
     return new Response(page(version, releaseTag, repo, SITE_URL), { headers: {
       'Content-Type': 'text/html; charset=utf-8',
       'Cache-Control': 'public, max-age=0, must-revalidate',
@@ -145,7 +157,9 @@ function page(version, releaseTag, repo, siteUrl = SITE_URL) {
   <meta name="google-site-verification" content="googled7ecf9fd7d293ff6">
   <link rel="canonical" href="${siteUrl}/">
   <link rel="preload" href="/fonts/plus-jakarta-sans-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="preload" href="/images/pingloom-native-wheel-v7.png" as="image" type="image/png" fetchpriority="high">
+  <link rel="preload" href="/fonts/bricolage-grotesque-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/images/pingloom-native-wheel-v7-640.webp" imagesrcset="/images/pingloom-native-wheel-v7-640.webp 640w, /images/pingloom-native-wheel-v7.webp 1004w" imagesizes="(max-width: 700px) calc(100vw - 36px), 630px" as="image" type="image/webp" fetchpriority="high">
+  <link rel="preload" href="/catalog.json" as="fetch" crossorigin>
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Pingloom">
   <meta property="og:title" content="${title}">
@@ -183,7 +197,10 @@ function page(version, releaseTag, repo, siteUrl = SITE_URL) {
         <p class="availability">Windows · Experimental macOS · Free &amp; open source</p>
       </div>
       <figure class="hero-preview">
-        <img src="/images/pingloom-native-wheel-v7.png" width="1004" height="502" alt="Pingloom’s native Ping and Emote Wheels with their actual bundled artwork" fetchpriority="high">
+        <picture>
+          <source srcset="/images/pingloom-native-wheel-v7-640.webp 640w, /images/pingloom-native-wheel-v7.webp 1004w" sizes="(max-width: 700px) calc(100vw - 36px), 630px" type="image/webp">
+          <img src="/images/pingloom-native-wheel-v7.png" width="1004" height="502" alt="Pingloom’s native Ping and Emote Wheels with their actual bundled artwork" fetchpriority="high" decoding="async">
+        </picture>
         <figcaption>Two Wheels. Your own way to say it.<small>Native renderer preview, not a desktop capture.</small></figcaption>
       </figure>
     </section>
@@ -230,7 +247,13 @@ function page(version, releaseTag, repo, siteUrl = SITE_URL) {
 
     <section id="app" class="app-section" aria-labelledby="app-title">
       <div class="app-copy"><h2 id="app-title">Make it<br>feel like you.</h2><p>Choose your trigger. Arrange your eight slices. Import your own emote images. Preview your changes before saving.</p><p>The Wheel and overlays run natively in Rust. Settings live in a bundled Tauri WebView, not on this website.</p><a class="text-link" href="${repo}#readme">Explore the desktop app <span aria-hidden="true">↗</span></a></div>
-      <figure class="app-preview bezel"><img src="/images/pingloom-sapphire-dark-preview.png" alt="Rendered Pingloom Settings in Loom Night: Tactical Pings, the eight-slice Wheel and selected Danger artwork" width="960" height="720" loading="lazy"><figcaption>Actual Settings UI render · Loom Night / Pingloom Blush</figcaption></figure>
+      <figure class="app-preview bezel">
+        <picture>
+          <source srcset="/images/pingloom-sapphire-dark-preview-720.webp 720w, /images/pingloom-sapphire-dark-preview.webp 960w" sizes="(max-width: 700px) calc(100vw - 36px), 720px" type="image/webp">
+          <img src="/images/pingloom-sapphire-dark-preview.png" alt="Rendered Pingloom Settings in Loom Night: Tactical Pings, the eight-slice Wheel and selected Danger artwork" width="960" height="720" loading="lazy" decoding="async">
+        </picture>
+        <figcaption>Actual Settings UI render · Loom Night / Pingloom Blush</figcaption>
+      </figure>
     </section>
 
     <section id="download" class="downloads" aria-labelledby="download-title">

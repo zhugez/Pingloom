@@ -1,5 +1,6 @@
 import { readFile, copyFile, mkdir, rm, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
+import sharp from 'sharp';
 
 // Use the desktop catalogue as the source of truth, not a second hand-maintained list.
 const root = new URL('../', import.meta.url);
@@ -35,7 +36,20 @@ async function copy(source, destination) {
 for (const item of [...pings, ...emotes]) {
   for (const key of ['image', 'effect', 'sound']) await copy(item[key].slice(1), item[key].slice(1));
 }
-for (const file of ['pingloom-sapphire-dark-preview.png', 'pingloom-native-wheel-v7.png']) await copy(`docs/media/${file}`, `images/${file}`);
+for (const file of ['pingloom-sapphire-dark-preview.png', 'pingloom-native-wheel-v7.png']) {
+  await copy(`docs/media/${file}`, `images/${file}`);
+  const base = file.replace(/\.png$/, '');
+  const src = fileURLToPath(new URL(`docs/media/${file}`, root));
+  await sharp(src).webp({ quality: 85, effort: 6 }).toFile(fileURLToPath(new URL(`images/${base}.webp`, output)));
+}
+await sharp(fileURLToPath(new URL('docs/media/pingloom-native-wheel-v7.png', root)))
+  .resize(640)
+  .webp({ quality: 85, effort: 6 })
+  .toFile(fileURLToPath(new URL('images/pingloom-native-wheel-v7-640.webp', output)));
+await sharp(fileURLToPath(new URL('docs/media/pingloom-sapphire-dark-preview.png', root)))
+  .resize(720)
+  .webp({ quality: 85, effort: 6 })
+  .toFile(fileURLToPath(new URL('images/pingloom-sapphire-dark-preview-720.webp', output)));
 await copy('docs/media/brand/pingloom-mark-mono.svg', 'images/mark.svg');
 await copy('THIRD_PARTY_NOTICES.txt', 'THIRD_PARTY_NOTICES.txt');
 await writeFile(new URL('googled7ecf9fd7d293ff6.html', output), 'google-site-verification: googled7ecf9fd7d293ff6.html\n');

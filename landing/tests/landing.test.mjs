@@ -101,7 +101,9 @@ test('seo metadata, canonical, OpenGraph, Twitter and valid JSON-LD are served t
   assert.ok(html.includes('<meta property="og:url" content="https://pingloom.zhugez.workers.dev/">'));
   assert.ok(html.includes('<meta name="google-site-verification" content="googled7ecf9fd7d293ff6">'));
   assert.ok(html.includes('<link rel="preload" href="/fonts/plus-jakarta-sans-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>'));
-  assert.ok(html.includes('<link rel="preload" href="/images/pingloom-native-wheel-v7.png" as="image" type="image/png" fetchpriority="high">'));
+  assert.ok(html.includes('<link rel="preload" href="/fonts/bricolage-grotesque-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>'));
+  assert.ok(html.includes('<link rel="preload" href="/images/pingloom-native-wheel-v7-640.webp" imagesrcset="/images/pingloom-native-wheel-v7-640.webp 640w, /images/pingloom-native-wheel-v7.webp 1004w" imagesizes="(max-width: 700px) calc(100vw - 36px), 630px" as="image" type="image/webp" fetchpriority="high">'));
+  assert.ok(html.includes('<link rel="preload" href="/catalog.json" as="fetch" crossorigin>'));
   assert.ok(html.includes('<h1 id="hero-title"><span class="sr-only">Pingloom — </span>Eight directions.<br><span>One flick.</span></h1>'));
   const ogImage = 'https://pingloom.zhugez.workers.dev/images/pingloom-native-wheel-v7.png';
   assert.ok(html.includes(`<meta property="og:image" content="${ogImage}">`));

@@ -11,6 +11,7 @@
     "deploy": "npm run build && wrangler deploy"
   },
   "devDependencies": {
+    "sharp": "^0.35.5",
     "wrangler": "4.151.1"
   }
 }
