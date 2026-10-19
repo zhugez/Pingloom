@@ -85,6 +85,7 @@ h2 { font-size: clamp(34px, 4vw, 52px); letter-spacing: -.025em; }
 .direction { color: var(--accent); font-size: 12px; margin-bottom: 10px; }
 .selection h3 { font-size: 36px; }
 #selection-help { margin: 18px 0 24px; color: var(--muted); font-size: 14px; max-width: 38ch; }
+.playground, .app-section, .downloads { content-visibility: auto; contain-intrinsic-size: auto 700px; }
 .gesture-steps { list-style: none; display: grid; grid-template-columns: repeat(3,1fr); gap: 32px; margin: 40px 0 0; padding: 28px 0; border-block: 1px solid var(--line); }
 .gesture-steps li { display: flex; align-items: start; gap: 16px; }
 .gesture-steps li > span { font: 700 24px var(--display); color: var(--accent); }
