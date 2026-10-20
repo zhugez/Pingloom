@@ -597,6 +597,7 @@ fn candidate_field(v: &serde_json::Value) -> Option<String> {
     }
     for (field, min, max) in [
         ("drag_threshold_px", 2.0, 40.0),
+        ("wheel_size_percent", 60.0, 160.0),
         ("ping_size_px", 60.0, 220.0),
         ("ping_duration_s", 1.0, 8.0),
         ("volume", 0.0, 100.0),
@@ -683,6 +684,7 @@ fn strict_keys(v: &serde_json::Value) -> bool {
         "click_ping_id",
         "game_check",
         "wheel",
+        "wheel_size_percent",
         "ping_size_px",
         "ping_duration_s",
         "volume",
