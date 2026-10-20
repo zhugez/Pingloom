@@ -4,7 +4,7 @@ import style from './style.js';
 const REPO = 'https://github.com/zhugez/pingloom';
 const SITE_URL = 'https://pingloom.zhugez.workers.dev';
 const VERSION = '0.1.0';
-const RELEASE_TAG = 'v0.1.0-opt.2';
+const RELEASE_TAG = 'v0.1.0-opt.3';
 
 const LLMS_TXT = `# Pingloom
 
@@ -20,14 +20,15 @@ Pingloom is an open-source desktop application that places League of Legends tac
 ## Platforms & Requirements
 - **Windows 11 x64**: Native Win32 hooks and layered overlays. Requires Evergreen WebView2 for Settings. Unsigned prerelease build.
 - **macOS (Apple Silicon & Intel)**: Native Quartz/AppKit backend. Ad-hoc signed, unnotarized experimental build requiring Accessibility permission.
-- **Linux**: Source backend retained; public binary packages paused.
+- **NixOS (Wayland + niri)**: Native compositor-level gesture bridge with passive layer-shell overlay. Run directly via \`nix run github:zhugez/pingloom#vm\` or configure via the NixOS module.
+- **Linux (traditional)**: Traditional generic packages in development.
 
 ## Project Links & Documentation
 - [Homepage & Interactive Demo](https://pingloom.zhugez.workers.dev/): Browser preview of the 8-slice wheel and sound effects.
 - [GitHub Repository](https://github.com/zhugez/pingloom): Source code, issues, and release downloads.
 - [Gestures & Controls Guide](https://github.com/zhugez/pingloom#gestures--controls): Complete desktop gesture documentation.
 - [Platform Requirements](https://github.com/zhugez/pingloom/blob/main/docs/PLATFORMS.md): Operating system requirements and security permissions.
-- [Release Notes & Checksums](https://github.com/zhugez/pingloom/releases/tag/v0.1.0-opt.2): Verified CI build information and artifact hashes.
+- [Release Notes & Checksums](https://github.com/zhugez/pingloom/releases/tag/v0.1.0-opt.3): Verified CI build information and artifact hashes.
 - [Third-Party Notices](https://pingloom.zhugez.workers.dev/THIRD_PARTY_NOTICES.txt): Attribution for Riot Games assets and open-source fonts.
 `;
 
@@ -201,7 +202,7 @@ function page(version, releaseTag, repo, siteUrl = SITE_URL) {
         <p>Bring League of Legends tactical pings and animated emotes to your desktop with an eight-slice radial gesture. Runs natively in Rust, independent of the game process.</p>
         <a class="button primary large" href="#download">Get Pingloom</a>
         <a class="text-link" href="#playground">Give the Wheel a spin <span aria-hidden="true">↓</span></a>
-        <p class="availability">Windows · Experimental macOS · Free &amp; open source</p>
+        <p class="availability">Windows · Experimental macOS · NixOS (niri) · Free &amp; open source</p>
       </div>
       <figure class="hero-preview">
         <picture>
@@ -285,8 +286,18 @@ function page(version, releaseTag, repo, siteUrl = SITE_URL) {
           <p class="download-warning">Ad-hoc signed, unnotarized experimental build. Gatekeeper may ask for approval in Privacy &amp; Security. Gestures need Accessibility and, if prompted, Input Monitoring.</p>
           <p class="download-verify"><a href="${repo}/releases/download/${releaseTag}/BUILD_INFO-macos.txt">macOS checksum &amp; build info</a> · <a href="${repo}/blob/main/docs/PLATFORMS.md#macos">macOS platform guide</a></p>
         </div>
+        <div class="download-card">
+          <h3>NixOS <small>niri Wayland</small></h3>
+          <p class="download-requirements">Nix 2.18+ · Native in-compositor integration.</p>
+          <div class="download-cta">
+            <a class="button secondary" href="${repo}/blob/main/nix/README.md">NixOS setup guide</a>
+            <a class="text-link" href="${repo}/blob/main/flake.nix">View Flake</a>
+          </div>
+          <p class="download-warning">Opt-in compositor integration. Runs with zero root GUI, zero evdev grab, and verified passive layer-shell overlay.</p>
+          <p class="download-verify"><a href="${repo}/blob/main/nix/README.md#try-in-the-disposable-vm">Test in disposable VM</a> · <a href="${repo}/blob/main/docs/PLATFORMS.md#nixos--niri-native-wayland-experimental">NixOS platform guide</a></p>
+        </div>
       </div>
-      <p class="download-note">Linux packages: coming soon. <a href="${repo}/blob/main/docs/PLATFORMS.md">Platform requirements</a> · <a href="${repo}/releases/tag/${releaseTag}">Release notes</a></p>
+      <p class="download-note">Traditional Linux packages: in progress. <a href="${repo}/blob/main/docs/PLATFORMS.md">Platform requirements</a> · <a href="${repo}/releases/tag/${releaseTag}">Release notes</a></p>
     </section>
   </main>
   <footer class="wrap"><div class="footer-top"><a class="brand" href="/">Pingloom</a><span>Free &amp; open source. Code under MIT.</span><a href="${repo}">View source</a></div><p>League ping and emote artwork © Riot Games, Inc. Not endorsed by Riot Games. <a href="/THIRD_PARTY_NOTICES.txt">Third-party notices</a>.</p></footer>

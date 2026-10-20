@@ -17,7 +17,7 @@ Images are labelled by provenance: the native Wheel image is a native renderer r
 
 ## Deployment
 
-Worker `pingloom` serves `/`, `/api/status`, `/robots.txt`, `/sitemap.xml`, `/download/windows`, `/download/windows-portable`, `/download/macos` and locally hosted static assets via the `ASSETS` binding in `wrangler.toml`. Worker configuration in `wrangler.toml` separates the visible application version (`PINGLOOM_VERSION = "0.1.0"`) from the distribution release tag (`PINGLOOM_RELEASE_TAG = "v0.1.0-opt.2"`).
+Worker `pingloom` serves `/`, `/api/status`, `/robots.txt`, `/sitemap.xml`, `/download/windows`, `/download/windows-portable`, `/download/macos` and locally hosted static assets via the `ASSETS` binding in `wrangler.toml`. Worker configuration in `wrangler.toml` separates the visible application version (`PINGLOOM_VERSION = "0.1.0"`) from the distribution release tag (`PINGLOOM_RELEASE_TAG = "v0.1.0-opt.3"`).
 
 ## Search metadata and crawl endpoints
 

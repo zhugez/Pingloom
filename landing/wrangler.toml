@@ -10,5 +10,5 @@ run_worker_first = true
 
 [vars]
 PINGLOOM_VERSION = "0.1.0"
-PINGLOOM_RELEASE_TAG = "v0.1.0-opt.2"
+PINGLOOM_RELEASE_TAG = "v0.1.0-opt.3"
 GITHUB_REPO = "https://github.com/zhugez/pingloom"

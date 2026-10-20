@@ -42,12 +42,12 @@ test('download redirects and status remain available; unknown paths go to static
   for (const platform of ['windows', 'windows-portable', 'macos']) {
     const response = await worker.fetch(new Request(`https://test/download/${platform}`), {});
     assert.equal(response.status, 302);
-    assert.match(response.headers.get('location'), /^https:\/\/github.com\/zhugez\/pingloom\/releases\/download\/v0\.1\.0-opt\.2\//);
+    assert.match(response.headers.get('location'), /^https:\/\/github.com\/zhugez\/pingloom\/releases\/download\/v0\.1\.0-opt\.3\//);
   }
   const status = await (await worker.fetch(new Request('https://test/api/status'), {})).json();
   assert.equal(status.project, 'Pingloom');
   assert.equal(status.version, '0.1.0');
-  assert.equal(status.release_tag, 'v0.1.0-opt.2');
+  assert.equal(status.release_tag, 'v0.1.0-opt.3');
   assert.equal(status.deployment_url, 'https://pingloom.zhugez.workers.dev');
   assert.match(await readFile(new URL('../wrangler.toml', import.meta.url), 'utf8'), /^name = "pingloom"$/m);
   const response = await worker.fetch(new Request('https://test/missing'), { ASSETS: { fetch: () => new Response('Not found', { status: 404 }) } });
@@ -61,10 +61,10 @@ test('displayed version stays v0.1.0 while all distribution links select the app
     PINGLOOM_RELEASE_TAG: config.match(/^PINGLOOM_RELEASE_TAG = "([^"]+)"$/m)?.[1],
   };
   assert.equal(env.PINGLOOM_VERSION, '0.1.0');
-  assert.equal(env.PINGLOOM_RELEASE_TAG, 'v0.1.0-opt.2');
+  assert.equal(env.PINGLOOM_RELEASE_TAG, 'v0.1.0-opt.3');
   const readme = await readFile(new URL('../../README.md', import.meta.url), 'utf8');
   assert.ok(!readme.includes('/releases/download/v0.1.0/'));
-  const notes = 'https://github.com/zhugez/pingloom/releases/tag/v0.1.0-opt.2';
+  const notes = 'https://github.com/zhugez/pingloom/releases/tag/v0.1.0-opt.3';
   assert.ok(readme.includes(`](${notes})`));
   for (const bindings of [{}, env]) {
     const html = await (await worker.fetch(new Request('https://test/'), bindings)).text();
@@ -73,13 +73,13 @@ test('displayed version stays v0.1.0 while all distribution links select the app
     assert.ok(html.includes(`href="${notes}">Release notes</a>`));
     const status = await (await worker.fetch(new Request('https://test/api/status'), bindings)).json();
     assert.equal(status.version, '0.1.0');
-    assert.equal(status.release_tag, 'v0.1.0-opt.2');
+    assert.equal(status.release_tag, 'v0.1.0-opt.3');
     for (const [platform, field, filename] of [
       ['windows', 'windows_installer', 'Pingloom_0.1.0_x64-setup.exe'],
       ['windows-portable', 'windows_portable', 'pingloom.exe'],
       ['macos', 'macos_universal', 'pingloom-macos-universal.zip'],
     ]) {
-      const expected = `https://github.com/zhugez/pingloom/releases/download/v0.1.0-opt.2/${filename}`;
+      const expected = `https://github.com/zhugez/pingloom/releases/download/v0.1.0-opt.3/${filename}`;
       const redirect = await worker.fetch(new Request(`https://test/download/${platform}`), bindings);
       assert.equal(redirect.status, 302);
       assert.equal(redirect.headers.get('location'), expected);
@@ -176,8 +176,8 @@ test('desktop usage instructions, platform signing disclosures and checksum link
   assert.ok(!html.toLowerCase().includes('disable gatekeeper'));
   assert.ok(!html.toLowerCase().includes('disable antivirus'));
 
-  const winChecksum = 'https://github.com/zhugez/pingloom/releases/download/v0.1.0-opt.2/BUILD_INFO-windows.txt';
-  const macChecksum = 'https://github.com/zhugez/pingloom/releases/download/v0.1.0-opt.2/BUILD_INFO-macos.txt';
+  const winChecksum = 'https://github.com/zhugez/pingloom/releases/download/v0.1.0-opt.3/BUILD_INFO-windows.txt';
+  const macChecksum = 'https://github.com/zhugez/pingloom/releases/download/v0.1.0-opt.3/BUILD_INFO-macos.txt';
   assert.ok(html.includes(`href="${winChecksum}"`));
   assert.ok(html.includes(`href="${macChecksum}"`));
   assert.ok(!html.includes('SHA256SUMS.txt'));

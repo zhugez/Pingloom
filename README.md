@@ -15,7 +15,8 @@
 <p align="center">
   <a href="https://github.com/zhugez/pingloom/actions/workflows/deploy-landing.yml"><img src="https://github.com/zhugez/pingloom/actions/workflows/deploy-landing.yml/badge.svg?branch=main" alt="Landing page build and deployment status" /></a>
   <a href="https://learn.microsoft.com/en-us/windows/release-health/windows11-release-information"><img src="https://img.shields.io/badge/Platform-Windows%2011%20x64-0078D4?logo=windows11&logoColor=white" alt="Platform" /></a>
-  <a href="docs/PLATFORMS.md"><img src="https://img.shields.io/badge/Linux-Coming%20soon-FCC624?logo=linux&logoColor=black" alt="Linux coming soon" /></a>
+  <a href="nix/README.md"><img src="https://img.shields.io/badge/NixOS-Wayland%20(niri)-5277C3?logo=nixos&logoColor=white" alt="NixOS niri" /></a>
+  <a href="docs/PLATFORMS.md"><img src="https://img.shields.io/badge/Linux-traditional%20in%20progress-FCC624?logo=linux&logoColor=black" alt="Linux in progress" /></a>
   <a href="docs/PLATFORMS.md"><img src="https://img.shields.io/badge/macOS-experimental-444444?logo=apple&logoColor=white" alt="macOS experimental" /></a>
   <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/Rust-2021%20Edition-black?logo=rust&logoColor=white" alt="Rust" /></a>
   <a href="https://v2.tauri.app/"><img src="https://img.shields.io/badge/Tauri-v2-24C8DB?logo=tauri&logoColor=white" alt="Tauri 2" /></a>
@@ -24,7 +25,7 @@
   <a href="https://github.com/zhugez/pingloom/issues"><img src="https://img.shields.io/badge/Issues-zhugez%2Fpingloom-informational?logo=github" alt="Issue Tracker" /></a>
 </p>
 
-Pingloom places League of Legends tactical pings and animated emotes on your desktop through quick radial gestures, independent of the game client. Available for Windows, with an experimental macOS backend. **Linux: Coming soon** — public builds are temporarily paused. See [platform requirements and permissions](docs/PLATFORMS.md).
+Pingloom places League of Legends tactical pings and animated emotes on your desktop through quick radial gestures, independent of the game client. Available for Windows, with an experimental macOS backend and a native NixOS + niri Wayland edition. Traditional generic Linux distribution remains in progress. See [platform requirements and permissions](docs/PLATFORMS.md).
 
 Native Rust owns latency-sensitive low-level keyboard/mouse hooks, input replay, gesture state machine, transparent layered overlays, animated WebP playback, audio effects, and notification tray icon. Settings is a single bundled local Tauri 2 WebView built with Svelte 5, Vite, daisyUI, `@lucide/svelte`, and local SIL OFL variable Plus Jakarta Sans typography. Overlays and hooks are native: Win32 on Windows, evdev/X11 + GTK/Cairo on Linux, and Quartz + AppKit on macOS—not WebViews. Pingloom itself is a desktop app, not a hosted service or production Node application. The [public website](https://pingloom.zhugez.workers.dev/) provides downloads and an interactive browser preview; it does not run desktop input or overlays.
 
@@ -42,11 +43,12 @@ The site is hosted on Cloudflare Workers. [Landing CI](https://github.com/zhugez
 
 | Platform | Download | Requirements |
 | --- | --- | --- |
-| Windows 11 x64 | [Installer](https://github.com/zhugez/pingloom/releases/download/v0.1.0-opt.2/Pingloom_0.1.0_x64-setup.exe) · [portable exe](https://github.com/zhugez/pingloom/releases/download/v0.1.0-opt.2/pingloom.exe) | Evergreen WebView2; unsigned |
-| Linux | **Coming soon** | Public builds and downloads temporarily paused; source backend retained |
-| macOS (Apple Silicon + Intel) | [App ZIP](https://github.com/zhugez/pingloom/releases/download/v0.1.0-opt.2/pingloom-macos-universal.zip) | Accessibility; ad-hoc signed, not notarized; experimental |
+| Windows 11 x64 | [Installer](https://github.com/zhugez/pingloom/releases/download/v0.1.0-opt.3/Pingloom_0.1.0_x64-setup.exe) · [portable exe](https://github.com/zhugez/pingloom/releases/download/v0.1.0-opt.3/pingloom.exe) | Evergreen WebView2; unsigned |
+| macOS (Apple Silicon + Intel) | [App ZIP](https://github.com/zhugez/pingloom/releases/download/v0.1.0-opt.3/pingloom-macos-universal.zip) | Accessibility; ad-hoc signed, not notarized; experimental |
+| NixOS (Wayland + niri) | [Flake & Module](nix/README.md) · `nix run github:zhugez/pingloom#vm` | Nix 2.18+, niri compositor, no root/privilege |
+| Generic Linux | **In progress** | Source backend retained; traditional packages in development |
 
-[Release notes, build provenance and SHA-256 checksums](https://github.com/zhugez/pingloom/releases/tag/v0.1.0-opt.2).
+[Release notes, build provenance and SHA-256 checksums](https://github.com/zhugez/pingloom/releases/tag/v0.1.0-opt.3).
 
 **The app and displayed version remain v0.1.0.** README and website downloads select the same prerelease build; use the attached build commit and SHA-256 checksums to identify it. See [platform setup](docs/PLATFORMS.md) before running.
 
