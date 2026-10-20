@@ -96,7 +96,15 @@ fn request(control: &Control) -> Result<(), String> {
     if reply.get("Ok") == Some(&serde_json::json!("Handled")) {
         Ok(())
     } else {
-        Err(format!("niri rejected the bridge command: {reply}. Use the pinned Pingloom-integrated niri package; stock niri is not supported."))
+        let is_stock = reply
+            .get("Err")
+            .and_then(|e| e.as_str())
+            .is_some_and(|s| s.contains("error parsing request"));
+        if is_stock {
+            Err("Detected stock niri compositor (unpatched IPC). Settings mode remains active; in-compositor gestures require the pinned Pingloom-integrated niri package.".into())
+        } else {
+            Err(format!("niri rejected the bridge command: {reply}. Use the pinned Pingloom-integrated niri package; stock niri is not supported."))
+        }
     }
 }
 struct SocketPath(PathBuf);

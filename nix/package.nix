@@ -12,6 +12,7 @@
 , libxi
 , libxtst
 , gtk-layer-shell
+, gst_all_1
 , pingloomSrc ? ../.
 }:
 
@@ -77,6 +78,9 @@ rustPlatform.buildRustPackage {
     libxi
     libxtst
     gtk-layer-shell
+    gst_all_1.gstreamer
+    gst_all_1.gst-plugins-base
+    gst_all_1.gst-plugins-good
   ];
 
   # Avoid whole-program LTO for this experimental package.
