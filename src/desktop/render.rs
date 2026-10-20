@@ -294,12 +294,10 @@ impl Renderer {
                 }
             }
         }
-        let pings: Vec<_> = self
-            .pings
-            .iter()
-            .map(|p| (p.id, p.point, now.duration_since(p.started).as_secs_f64()))
-            .collect();
-        for (id, at, age) in pings {
+        for ping in &self.pings {
+            let id = ping.id;
+            let at = ping.point;
+            let age = now.duration_since(ping.started).as_secs_f64();
             let size = settings.ping_size_px as f64;
             let fade = effect_fade(age, settings.ping_duration_s as f64);
             let rgb = u32::from_str_radix(id.asset().color.trim_start_matches('#'), 16)
@@ -375,7 +373,7 @@ impl Renderer {
                 emote.pending.is_some(),
             );
             let point = emote.point;
-            let slug = emote.slug.clone();
+            let slug = &emote.slug;
             let art = art.or_else(|| self.asset(&format!("emotes/{slug}.png")));
             if let Some(art) = art {
                 blit(

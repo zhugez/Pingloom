@@ -124,10 +124,7 @@ pub(super) fn extract_cropped_bgra(image: &image::RgbaImage, crop: &MonitorCrop)
             let r = (pixel[0] as u16 * alpha / 255) as u8;
             let g = (pixel[1] as u16 * alpha / 255) as u8;
             let b = (pixel[2] as u16 * alpha / 255) as u8;
-            bgra.push(b);
-            bgra.push(g);
-            bgra.push(r);
-            bgra.push(pixel[3]);
+            bgra.extend_from_slice(&[b, g, r, pixel[3]]);
         }
     }
     bgra

@@ -43,6 +43,13 @@
            assert c.services.pingloom.enable;
            assert c.programs.niri.package.outPath == self.packages.x86_64-linux.patched-niri.outPath;
            nixpkgs.legacyPackages.x86_64-linux.runCommand "pingloom-native-vm-policy" { } ''touch "$out"'';
+      devShells = eachSystem (system:
+        let pkgs = nixpkgs.legacyPackages.${system}; in {
+          default = pkgs.mkShell {
+            nativeBuildInputs = [ pkgs.pkg-config pkgs.cargo pkgs.rustc pkgs.rustfmt pkgs.clippy pkgs.nodejs_22 ];
+            buildInputs = (self.packages.${system}.default.buildInputs or []);
+          };
+        });
       nixosModules.default = import ./nix/module.nix;
       overlays.default = final: _prev: {
         pingloom = final.callPackage ./nix/package.nix { pingloomSrc = self; };
