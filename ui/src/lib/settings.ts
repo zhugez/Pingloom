@@ -10,6 +10,7 @@ export interface Settings {
   click_ping_id: string;
   game_check: boolean;
   wheel: string[];
+  wheel_size_percent: number;
   ping_size_px: number;
   ping_duration_s: number;
   volume: number;
@@ -25,6 +26,7 @@ export interface CatalogEntry { id: string; name: string; preview_url: string }
 export interface BootData {
   session_id: string;
   platform?: 'windows' | 'linux' | 'macos';
+  mouse_triggers?: boolean;
   settings: Settings;
   status: 'active' | 'paused';
   catalog: { pings: CatalogEntry[]; emotes: CatalogEntry[]; trigger_keys?: number[] };
@@ -48,9 +50,9 @@ export const TRIGGERS: { value: Exclude<Trigger, object>; label: string }[] = [
   { value: 'win', label: 'Windows' }, { value: 'caps_lock', label: 'Caps Lock' },
   { value: 'mouse4', label: 'Mouse 4' }, { value: 'mouse5', label: 'Mouse 5' },
 ];
-export function platformTriggers(platform?: BootData['platform']) {
+export function platformTriggers(platform?: BootData['platform'], mouseTriggers = platform !== 'linux') {
   return TRIGGERS.filter(({ value }) =>
-    !(platform === 'linux' && (value === 'mouse4' || value === 'mouse5'))
+    !(!mouseTriggers && (value === 'mouse4' || value === 'mouse5'))
     && !(platform === 'macos' && value === 'caps_lock')
   ).map(option => ({ ...option, label: platform === 'macos' && option.value === 'win' ? 'Command' : platform === 'linux' && option.value === 'win' ? 'Super' : option.label }));
 }
@@ -75,7 +77,7 @@ export function errorFor(errors: Record<string, FieldError>, path: string): stri
 }
 export function pageForField(field: string): 'triggers' | 'pings' | 'emotes' {
   if (field.startsWith('emote') || field.startsWith('click_emote')) return 'emotes';
-  if (field === 'wheel' || field.startsWith('wheel.') || field.startsWith('ping') || field.startsWith('click_ping')) return 'pings';
+  if (field === 'wheel' || field.startsWith('wheel.') || field.startsWith('wheel_') || field.startsWith('ping') || field.startsWith('click_ping')) return 'pings';
   return 'triggers';
 }
 

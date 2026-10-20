@@ -3,6 +3,7 @@
 pub mod geometry;
 pub mod gesture;
 pub mod model;
+pub mod niri_bridge;
 pub mod settings;
 
 pub use gesture::{GestureEngine, InputDecision};

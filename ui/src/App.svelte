@@ -57,7 +57,7 @@
   let documentHidden = $state(false);
   let reducedMotion = $state(false);
   let demoStep = $state(2);
-  const TRIGGERS = $derived.by(() => platformTriggers(boot?.platform));
+  const TRIGGERS = $derived.by(() => platformTriggers(boot?.platform, boot?.mouse_triggers));
   let appearanceError = $state('');
   let appearanceRevision = 0;
   let appearanceQueue = Promise.resolve();
@@ -412,8 +412,9 @@
       previewFx = null;
       peek = false;
     }
-    const x = (event.clientX - pointer.cx) * pointer.scale;
-    const y = (event.clientY - pointer.cy) * pointer.scale;
+    const wheelScale = (draft?.wheel_size_percent ?? 100) / 100;
+    const x = ((event.clientX - pointer.cx) * pointer.scale) / wheelScale;
+    const y = ((event.clientY - pointer.cy) * pointer.scale) / wheelScale;
     const radius = Math.hypot(x, y);
     const slot = radius < 44 ? null : (Math.round(Math.atan2(x, -y) / (Math.PI / 4)) + 8) % 8;
     if (slot !== dragSlot && slot !== null) { selectSlot(slot); sound(true); }
@@ -430,8 +431,9 @@
       else announcement = 'Preview cancelled.';
       suppressClick = true;
     } else if (!(event.target as HTMLElement).closest('button')) {
-      const x = (event.clientX - pointer.cx) * pointer.scale;
-      const y = (event.clientY - pointer.cy) * pointer.scale;
+      const wheelScale = (draft?.wheel_size_percent ?? 100) / 100;
+      const x = ((event.clientX - pointer.cx) * pointer.scale) / wheelScale;
+      const y = ((event.clientY - pointer.cy) * pointer.scale) / wheelScale;
       const radius = Math.hypot(x, y);
       if (radius >= 44 && radius <= 140) focusSlot(activeKind, (Math.round(Math.atan2(x, -y) / (Math.PI / 4)) + 8) % 8);
     }
@@ -571,6 +573,7 @@
                   <div class="preview-panel-header"><span class="preview-title"><span class="live-dot"></span>Live wheel</span><span class="preview-subtitle">Drag to test · click to edit</span></div>
                   {@render WheelRadialPreview(kind, choices, values)}
                   <div class="display-sliders">
+                    {@render Slider('wheel-size', 'wheel_size_percent', 'Radar size', draft.wheel_size_percent, 60, 150, 1, '%')}
                     {#if page === 'pings'}
                       {@render Slider('ping-size', 'ping_size_px', 'Ping size', draft.ping_size_px, 60, 220, 1, 'px')}
                       {@render Slider('ping-duration', 'ping_duration_s', 'Duration', draft.ping_duration_s, 1, 8, .1, 's')}
@@ -663,7 +666,8 @@
 
 {#snippet WheelRadialPreview(kind: WheelKind, choices: CatalogEntry[], values: string[])}
   {@const duplicates = duplicateSlots(values)}
-  <div class="radial-wheel" class:dragging class:previewing={!!previewFx || peek} role="region" aria-label="Interactive radial wheel representation" onpointerdown={pointerDown} onpointermove={pointerMove} onpointerup={pointerUp} onpointercancel={cancelPointer} onlostpointercapture={cancelPointer}>
+  {@const wheelScale = (draft?.wheel_size_percent ?? 100) / 100}
+  <div class="radial-wheel" style={`--wheel-scale: ${wheelScale}`} class:dragging class:previewing={!!previewFx || peek} role="region" aria-label="Interactive radial wheel representation" onpointerdown={pointerDown} onpointermove={pointerMove} onpointerup={pointerUp} onpointercancel={cancelPointer} onlostpointercapture={cancelPointer}>
     <div class="wheel-stage">
       <div class="wheel-glow" style={`--turn: ${turn}deg`} aria-hidden="true"><div></div></div>
       <svg class="radial-svg" viewBox="0 0 280 280" aria-hidden="true" focusable="false">

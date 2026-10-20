@@ -4,6 +4,8 @@ mod cgimage;
 mod input;
 mod paint;
 mod render;
+#[cfg(all(target_os = "linux", feature = "wayland"))]
+mod wayland_paint;
 use crate::assets;
 #[path = "../windows/audio.rs"]
 mod audio;
@@ -53,6 +55,10 @@ struct Shared {
     overflow: AtomicBool,
     gesture_busy: AtomicBool,
     clock: Instant,
+    #[cfg(all(target_os = "linux", feature = "wayland"))]
+    owner_progress: Mutex<Instant>,
+    #[cfg(all(target_os = "linux", feature = "wayland"))]
+    configuration: Mutex<()>,
     monitors: Vec<(i32, i32, u32, u32, f64)>,
 }
 impl Shared {
@@ -63,6 +69,7 @@ impl Shared {
         }
     }
     fn decision(&self, state: &mut OwnerState, decision: InputDecision) -> bool {
+        input::enabled_changed(state.engine.enabled());
         let needs_wake = !decision.actions.is_empty();
         self.gesture_busy.store(
             matches!(
@@ -108,6 +115,35 @@ impl Shared {
         }
         decision.swallow
     }
+    #[cfg(all(target_os = "linux", feature = "wayland"))]
+    fn niri_packet(&self, packet: pingloom_core::niri_bridge::Packet) -> Result<(), String> {
+        let enabled = packet.enabled;
+        let actions = packet.logical_actions()?;
+        let mut state = self.state.lock().map_err(|_| "Native owner unavailable")?;
+        // In this backend only the compositor feeds the authoritative engine. This local
+        // engine retains canonical Settings/tray state; it never receives raw input.
+        input::received_enabled(enabled);
+        let _ = state.engine.set_enabled(enabled);
+        for action in actions {
+            let origin = match action {
+                Action::WheelOpen { origin, .. } => {
+                    state.origin = Some(origin);
+                    Some(origin)
+                }
+                Action::Select { .. } | Action::Cancel => state.origin.take(),
+                _ => state.origin,
+            };
+            self.actions
+                .try_send(QueuedAction {
+                    action,
+                    origin,
+                    scale: 1.0,
+                })
+                .map_err(|_| "Native action queue is full")?;
+        }
+        wake_owner();
+        Ok(())
+    }
     fn needs_fullscreen_probe(&self, button: pingloom_core::Button) -> bool {
         self.state
             .lock()
@@ -135,6 +171,9 @@ impl Shared {
     }
     fn fail(&self, warning: String) {
         let mut state = self.state.lock().expect("native owner poisoned");
+        if state.ready || state.warning.as_ref() != Some(&warning) {
+            eprintln!("Pingloom gestures paused: {warning}");
+        }
         state.ready = false;
         state.warning = Some(warning);
         let decision = state.engine.set_enabled(false);
@@ -203,7 +242,10 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             let _=WAKE.set(wake_tx);
             let mut engine = GestureEngine::new(settings)?;
             engine.set_enabled(false);
-            let shared = Arc::new(Shared { state: Mutex::new(OwnerState { engine, ready: false, warning, origin: None, scale: 1.0 }), actions: tx, running: AtomicBool::new(true), overflow: AtomicBool::new(false), gesture_busy:AtomicBool::new(false), clock: Instant::now(), monitors: app.available_monitors()?.into_iter().map(|m| (m.position().x, m.position().y, m.size().width, m.size().height, m.scale_factor())).collect() });
+            let monitors = if input::is_wayland() { Vec::new() } else {
+                app.available_monitors()?.into_iter().map(|m| (m.position().x, m.position().y, m.size().width, m.size().height, m.scale_factor())).collect()
+            };
+            let shared = Arc::new(Shared { state: Mutex::new(OwnerState { engine, ready: false, warning, origin: None, scale: 1.0 }), actions: tx, running: AtomicBool::new(true), overflow: AtomicBool::new(false), gesture_busy:AtomicBool::new(false), clock: Instant::now(), #[cfg(all(target_os = "linux", feature = "wayland"))] owner_progress: Mutex::new(Instant::now()), #[cfg(all(target_os = "linux", feature = "wayland"))] configuration: Mutex::new(()), monitors });
             let painter = paint::Painter::new(app.handle())?;
             let settings_item = MenuItem::with_id(app, "settings", "Settings…", true, None::<&str>)?;
             let toggle = CheckMenuItem::with_id(app, "toggle", "Gestures enabled", true, false, None::<&str>)?;
@@ -229,6 +271,8 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                     _ => {}
                 }).build(app)?;
             mailbox_setup.publish_owner(1);
+            #[cfg(all(target_os = "linux", feature = "wayland"))]
+            { *shared.owner_progress.lock().unwrap() = Instant::now(); }
             let hook_shared = Arc::clone(&shared);
             std::thread::Builder::new().name("pingloom-input".into()).spawn(move || {
                 if let Err(error) = input::run(Arc::clone(&hook_shared)) { hook_shared.fail(error); }
@@ -240,6 +284,8 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 let mut renderer = render::Renderer::new();
                 let mut last_enabled = false;
                 while shared.running.load(Ordering::Acquire) {
+                    #[cfg(all(target_os = "linux", feature = "wayland"))]
+                    { *shared.owner_progress.lock().unwrap() = Instant::now(); }
                     for request in mailbox_owner.take_all() {
                         let mut state = shared.state.lock().unwrap();
                         match request {
@@ -250,8 +296,20 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                                 let _ = reply.send(Ok(()));
                             }
                             OwnerRequest::Save(settings, reply) => {
+                                let previous = state.engine.settings().clone();
                                 drop(state);
-                                let persisted = input::validate(&settings).and_then(|()| settings.save_atomic(&path).map_err(|e| OwnerError::unavailable(e.to_string())));
+                                #[cfg(all(target_os = "linux", feature = "wayland"))]
+                                let _configuration = shared.configuration.lock().unwrap();
+                                let persisted = input::validate(&settings).and_then(|()| {
+                                    input::apply_settings(&settings)?;
+                                    if let Err(error) = settings.save_atomic(&path) {
+                                        if input::apply_settings(&previous).is_err() {
+                                            shared.fail("Settings rollback failed; compositor gestures paused.".into());
+                                        }
+                                        return Err(OwnerError::unavailable(error.to_string()));
+                                    }
+                                    Ok(())
+                                });
                                 let mut state = shared.state.lock().unwrap();
                                 let result = persisted.and_then(|()| state.engine.set_settings(*settings).map_err(|e| OwnerError::unavailable(e.to_string())));
                                 let response = match result { Ok(decision) => { shared.decision(&mut state, decision); Ok(Shared::status(&state)) }, Err(error) => Err(error) };

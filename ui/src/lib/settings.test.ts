@@ -15,6 +15,8 @@ test('trigger display handles Off and custom keys', () => {
 test('platform choices expose only supported native triggers', () => {
   assert.equal(platformTriggers().length, 7);
   assert.ok(!platformTriggers('linux').some(({ value }) => value === 'mouse4' || value === 'mouse5'));
+  assert.ok(platformTriggers('linux', true).some(({ value }) => value === 'mouse4'));
+  assert.ok(platformTriggers('linux', true).some(({ value }) => value === 'mouse5'));
   assert.ok(!platformTriggers('macos').some(({ value }) => value === 'caps_lock'));
   assert.equal(platformTriggers('macos').find(({ value }) => value === 'win')?.label, 'Command');
   assert.equal(platformTriggers('linux').find(({ value }) => value === 'win')?.label, 'Super');
@@ -23,6 +25,7 @@ test('canonical error fields route to the page containing their control', () => 
   assert.equal(pageForField('click_emote_id'), 'emotes');
   assert.equal(pageForField('emote_wheel.3'), 'emotes');
   assert.equal(pageForField('wheel.3'), 'pings');
+  assert.equal(pageForField('wheel_size_percent'), 'pings');
   assert.equal(pageForField('toggle_hotkey.vk'), 'triggers');
 });
 test('draft clone handles reactive settings and is isolated from canonical state', () => {

@@ -11,6 +11,7 @@ are real backends, not executables that print “Windows only”. CI compilation
 | --- | --- | --- | --- |
 | Windows x64 | Existing Win32 low-level hooks and SendInput | Existing layered Win32 renderer | Windows 11, Evergreen WebView2 |
 | Linux — Coming soon | Source-only evdev/uinput + XTest backend | Native GTK/Cairo | Public builds paused; development needs compositing X11, input permissions and tray support |
+| NixOS/niri — experimental source edition | Shared engine inside the opt-in pinned compositor; native suppression/replay | Passive GTK layer-shell surfaces | Pingloom-integrated niri 26.04; currently VM-only acceptance, no input-device grants |
 | macOS | Quartz event tap; tagged CGEvent replay | Native AppKit NSImageView window | Accessibility + Input Monitoring; app bundle installed locally |
 
 No overlay is a WebView. No Node process or remote server runs in production.
@@ -37,8 +38,8 @@ After building from source, run:
 ```
 
 `--settings` also provides access without a visible tray icon. Settings remains usable
-when native input is unavailable. **Wayland/XWayland gestures are unsupported**; sign
-into an X11 session. A non-composited X11 desktop cannot provide transparent overlays.
+when native input is unavailable. **Stock Wayland/XWayland gestures are unsupported**;
+the legacy backend requires an X11 session. The opt-in native niri edition below is separate. A non-composited X11 desktop cannot provide transparent overlays.
 
 Native gestures require read access to `/dev/input/event*` and read/write access to
 `/dev/uinput`. Pingloom neither runs as root nor changes permissions automatically.
@@ -61,6 +62,20 @@ The menu-neutral replay key prefers F24, otherwise an unassigned X11 key; applic
 with a custom F24 shortcut should use a non-menu modifier trigger and test that shortcut.
 
 Settings: `$XDG_CONFIG_HOME/pingloom/settings.json`, normally `~/.config/pingloom/settings.json`.
+
+## Native NixOS / niri edition — experimental
+
+`nix/README.md` documents the pinned package, explicit NixOS user-service module and
+native integration VM. Build the app with the `wayland` feature (enabled by the Nix
+package) and use the matching Pingloom-integrated niri build. Stock niri is rejected
+with a clear backend warning; there is no XWayland, cursor-polling or focused-overlay
+fallback. No device ACLs, input/uinput groups, capabilities or root GUI are needed.
+
+The compositor runs the same held-trigger gesture engine and owns input replay;
+the app paints per-output, non-interactive layer-shell surfaces. Settings remains
+the only WebView, and exposes Mouse 4/5 triggers when this backend is selected.
+This opt-in compositor change is currently authorized only inside the disposable
+VM. Public Linux downloads remain paused; physical hardware acceptance is separate.
 
 ## macOS
 

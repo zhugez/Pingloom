@@ -73,6 +73,7 @@ pub struct Settings {
     pub click_ping_id: PingId,
     pub game_check: bool,
     pub wheel: [PingId; 8],
+    pub wheel_size_percent: u8,
     pub ping_size_px: u16,
     pub ping_duration_s: f32,
     pub volume: u8,
@@ -101,6 +102,7 @@ impl Default for Settings {
             click_ping_id: DEFAULT_CLICK_PING,
             game_check: true,
             wheel: DEFAULT_PING_WHEEL,
+            wheel_size_percent: 100,
             ping_size_px: 110,
             ping_duration_s: 3.2,
             volume: 70,
@@ -189,6 +191,11 @@ impl Settings {
         if !(2..=40).contains(&self.drag_threshold_px) {
             return Err(SettingsError::Invalid(
                 "drag threshold must be 2..=40 pixels",
+            ));
+        }
+        if !(60..=160).contains(&self.wheel_size_percent) {
+            return Err(SettingsError::Invalid(
+                "wheel size must be 60..=160 percent",
             ));
         }
         if !(60..=220).contains(&self.ping_size_px) {
@@ -350,6 +357,7 @@ mod tests {
         let settings = Settings::default();
         settings.validate().unwrap();
         assert_eq!(settings.wheel, DEFAULT_PING_WHEEL);
+        assert_eq!(settings.wheel_size_percent, 100);
         assert_eq!(settings.emote_wheel, DEFAULT_EMOTE_WHEEL.map(str::to_owned));
         assert_eq!(
             settings.toggle_hotkey,
@@ -385,6 +393,18 @@ mod tests {
         wheel[1] = wheel[0];
         let settings = Settings {
             wheel,
+            ..Settings::default()
+        };
+        assert!(settings.validate().is_err());
+
+        let settings = Settings {
+            wheel_size_percent: 50,
+            ..Settings::default()
+        };
+        assert!(settings.validate().is_err());
+
+        let settings = Settings {
+            wheel_size_percent: 170,
             ..Settings::default()
         };
         assert!(settings.validate().is_err());

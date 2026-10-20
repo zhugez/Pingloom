@@ -61,3 +61,29 @@ cached surface/label colors when it changes, including on an already-open Wheel.
 This changes appearance only, not input authority, permissions, timing or replay.
 There are still no remote assets or overlay WebViews.
 See `docs/PLATFORMS.md` for prerequisites, architecture limits and physical acceptance.
+
+## Amendment: opt-in native niri integration
+
+The user approved a native NixOS/niri edition preserving held-trigger, drag and
+release semantics. This supersedes the Wayland exclusion above only for the
+pinned, explicitly selected Pingloom-integrated niri build; stock niri and other
+Wayland compositors remain unsupported.
+
+The shared `GestureEngine` runs synchronously on niri's input loop before native
+key/button delivery. niri supplies the authoritative, post-constraint logical
+pointer position, origin-output scale and fullscreen state. Suppression and replay
+stay inside that compositor, not an evdev proxy, XTest or a focused overlay.
+A versioned private Unix socket carries semantic actions to the app; commands
+carry validated Settings, pause state and a short heartbeat lease. Session lock,
+inactive seat, output topology changes and transport failure cancel interception.
+Only the trigger-held gesture is intercepted; no separate arming shortcut is added.
+
+With the `wayland` feature, native GTK layer-shell surfaces paint per-output,
+non-focusable, empty-input-region overlays in logical coordinates. There is no
+Wayland overlay Tauri Window or WebView; Settings remains the only WebView.
+Windows, macOS and the explicitly selected X11 backend retain their native paths.
+No root GUI, capabilities, input groups or automatic device grants are required.
+The custom compositor is opt-in and may only be installed/tested in the disposable
+VM under the current authorization, not silently substituted on the host desktop.
+Build/unit evidence is not physical runtime acceptance: focus, replay, lock/crash
+recovery, mixed-DPI and real-hardware latency must be checked separately.

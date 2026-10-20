@@ -100,6 +100,7 @@ const initialSettings = {
   click_ping_id: 'generic',
   game_check: true,
   wheel: ['danger', 'push', 'omw', 'allin', 'assist', 'needvision', 'missing', 'enemyvision'],
+  wheel_size_percent: 100,
   ping_size_px: 128,
   ping_duration_s: 3.5,
   volume: 85,

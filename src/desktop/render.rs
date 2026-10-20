@@ -93,14 +93,15 @@ impl Renderer {
                 if !settings.muted {
                     audio.warm();
                 }
+                let wheel_scale = queued.scale * (f64::from(settings.wheel_size_percent) / 100.0);
                 self.wheel = Some(Wheel {
                     kind: wheel,
                     origin,
                     hot: None,
                     blend: [0.0; 8],
                     updated: Instant::now(),
-                    scale: queued.scale,
-                    surface: crate::wheel::Surface::new(queued.scale),
+                    scale: wheel_scale,
+                    surface: crate::wheel::Surface::new(wheel_scale),
                     scaled_art: Vec::new(),
                 });
                 None

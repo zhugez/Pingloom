@@ -62,6 +62,7 @@ pub struct GestureEngine {
 impl GestureEngine {
     pub fn new(settings: Settings) -> Result<Self, SettingsError> {
         settings.validate()?;
+        let selection_scale = f64::from(settings.wheel_size_percent) / 100.0;
         Ok(Self {
             enabled: settings.enabled_on_start,
             settings,
@@ -77,7 +78,7 @@ impl GestureEngine {
             drag_button: Button::Left,
             origin: Point::new(0, 0),
             last_pointer_ms: 0,
-            selection_scale: 1.0,
+            selection_scale,
         })
     }
 
@@ -113,6 +114,9 @@ impl GestureEngine {
         let mut decision = InputDecision::default();
         self.cancel_gesture(&mut decision);
         self.settings = settings;
+        if self.state == GestureState::Idle {
+            self.selection_scale = f64::from(self.settings.wheel_size_percent) / 100.0;
+        }
         Ok(decision)
     }
 
@@ -498,7 +502,7 @@ impl GestureEngine {
         self.drag_button = button;
         self.origin = point;
         self.last_pointer_ms = time_ms;
-        self.selection_scale = dpi_scale;
+        self.selection_scale = dpi_scale * (f64::from(self.settings.wheel_size_percent) / 100.0);
     }
 
     fn on_pointer_up(&mut self, button: Button, point: Point, decision: &mut InputDecision) {
@@ -778,6 +782,16 @@ mod tests {
                 point: Point::new(229, 100),
             }]
         );
+
+        let custom_scale_settings = Settings {
+            wheel_size_percent: 80,
+            ..Settings::default()
+        };
+        engine.set_settings(custom_scale_settings).unwrap();
+        assert!(engine.on_event(down_at_scale(7)).swallow);
+        // At 1.5 dpi_scale * 80% = 1.20 gesture scale.
+        assert!((engine.gesture_scale() - 1.20).abs() < 1e-6);
+        let _ = engine.on_event(up(Button::Left, 100, 100, 8));
     }
 
     #[test]

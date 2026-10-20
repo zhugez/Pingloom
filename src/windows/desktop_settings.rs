@@ -61,6 +61,7 @@ pub(crate) struct Boot {
     catalog: Catalog,
     load_warning: Option<String>,
     platform: &'static str,
+    mouse_triggers: bool,
 }
 #[derive(serde::Serialize)]
 pub(crate) struct Heartbeat {
@@ -244,6 +245,10 @@ pub(crate) async fn get_settings_and_catalog<R: Runtime>(
         catalog,
         load_warning: run_status.load_warning,
         platform: std::env::consts::OS,
+        #[cfg(windows)]
+        mouse_triggers: true,
+        #[cfg(not(windows))]
+        mouse_triggers: super::input::mouse_triggers_supported(),
     })
 }
 #[tauri::command(rename_all = "snake_case")]

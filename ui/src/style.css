@@ -213,8 +213,8 @@ kbd { font-family: inherit; font-weight: 700; }
 .preview-subtitle { color: var(--faint); font-size: 11px; text-align: right; }
 .radial-wheel { position: relative; width: 100%; max-width: 460px; aspect-ratio: 1; margin: 18px auto 0; touch-action: none; user-select: none; cursor: grab; }
 .radial-wheel.dragging { cursor: grabbing; }
-.wheel-stage { position: absolute; inset: 0; transition: opacity 500ms var(--ease), transform 700ms var(--ease); pointer-events: none; }
-.previewing .wheel-stage { opacity: .14; transform: scale(.93); }
+.wheel-stage { position: absolute; inset: 0; transform: scale(var(--wheel-scale, 1)); transform-origin: 50% 50%; transition: opacity 500ms var(--ease), transform 250ms var(--ease); pointer-events: none; }
+.previewing .wheel-stage { opacity: .14; transform: scale(calc(var(--wheel-scale, 1) * .93)); }
 .wheel-glow { position: absolute; inset: -6%; transform: rotate(var(--turn)); transition: transform 750ms var(--ease); }
 .wheel-glow > div { position: absolute; inset: 0; border-radius: 50%; background: radial-gradient(circle at 50% 14%,var(--glow),transparent 36%); animation: breathe 4.2s var(--ease) infinite alternate; }
 .radial-svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }

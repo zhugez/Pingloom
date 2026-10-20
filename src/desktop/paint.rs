@@ -13,6 +13,7 @@ pub(super) struct Painter {
     latest: Arc<Mutex<Option<Arc<Frame>>>>,
     displayed: Arc<Mutex<Option<Arc<Frame>>>>,
     queued: Arc<AtomicBool>,
+    queued_at: std::cell::Cell<std::time::Instant>,
     failed: Arc<AtomicBool>,
     visible: Arc<AtomicBool>,
     reduced: Arc<AtomicBool>,
@@ -20,25 +21,32 @@ pub(super) struct Painter {
 }
 impl Painter {
     pub fn new(app: &AppHandle) -> Result<Self, Box<dyn std::error::Error>> {
-        let window = tauri::WindowBuilder::new(app, "native-overlay")
-            .title("Pingloom overlay")
-            .decorations(false)
-            .transparent(true)
-            .always_on_top(true)
-            .skip_taskbar(true)
-            .focusable(false)
-            .visible(false)
-            .inner_size(1.0, 1.0)
-            .build()?;
-        window.set_ignore_cursor_events(true)?;
         let latest = Arc::new(Mutex::new(None::<Arc<Frame>>));
         let displayed = Arc::new(Mutex::new(None::<Arc<Frame>>));
-        install(&window, Arc::clone(&displayed))?;
+        #[cfg(all(target_os = "linux", feature = "wayland"))]
+        if super::input::is_wayland() {
+            super::wayland_paint::initialize()?;
+        }
+        if !super::input::is_wayland() {
+            let window = tauri::WindowBuilder::new(app, "native-overlay")
+                .title("Pingloom overlay")
+                .decorations(false)
+                .transparent(true)
+                .always_on_top(true)
+                .skip_taskbar(true)
+                .focusable(false)
+                .visible(false)
+                .inner_size(1.0, 1.0)
+                .build()?;
+            window.set_ignore_cursor_events(true)?;
+            install(&window, Arc::clone(&displayed))?;
+        }
         Ok(Self {
             app: app.clone(),
             latest,
             displayed,
             queued: Arc::new(AtomicBool::new(false)),
+            queued_at: std::cell::Cell::new(std::time::Instant::now()),
             failed: Arc::new(AtomicBool::new(false)),
             visible: Arc::new(AtomicBool::new(false)),
             reduced: Arc::new(AtomicBool::new(system_reduced_motion())),
@@ -49,6 +57,14 @@ impl Painter {
         self.reduced.load(Ordering::Acquire)
     }
     pub fn failed(&self) -> bool {
+        if super::input::is_wayland()
+            && presentation_stalled(
+                self.queued.load(Ordering::Acquire),
+                self.queued_at.get().elapsed(),
+            )
+        {
+            self.failed.store(true, Ordering::Release);
+        }
         self.failed.load(Ordering::Acquire)
     }
     pub fn present(&self, frame: Option<Frame>) {
@@ -74,6 +90,9 @@ impl Painter {
         if self.queued.swap(true, Ordering::AcqRel) {
             return;
         }
+        if super::input::is_wayland() {
+            self.queued_at.set(std::time::Instant::now());
+        }
         let app = self.app.clone();
         let latest = Arc::clone(&self.latest);
         let displayed = Arc::clone(&self.displayed);
@@ -93,6 +112,14 @@ impl Painter {
                 }
                 drop(checked);
                 let result = (|| -> Result<(), Box<dyn std::error::Error>> {
+                    #[cfg(all(target_os = "linux", feature = "wayland"))]
+                    if super::input::is_wayland() {
+                        let frame = latest.lock().unwrap().clone();
+                        let showing = frame.is_some();
+                        super::wayland_paint::present(frame)?;
+                        visible.store(showing, Ordering::Release);
+                        return Ok(());
+                    }
                     let window = app
                         .get_window("native-overlay")
                         .ok_or("native overlay unavailable")?;
@@ -139,6 +166,10 @@ impl Painter {
             self.failed.store(true, Ordering::Release);
         }
     }
+}
+
+fn presentation_stalled(queued: bool, elapsed: std::time::Duration) -> bool {
+    queued && elapsed > std::time::Duration::from_millis(pingloom_core::niri_bridge::LEASE_MS)
 }
 
 #[cfg(target_os = "linux")]
@@ -250,4 +281,18 @@ fn update(window: &tauri::Window, frame: &Frame) -> Result<(), Box<dyn std::erro
         let _: () = msg_send![image, release];
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn only_a_pending_presentation_can_expire() {
+        let lease = std::time::Duration::from_millis(pingloom_core::niri_bridge::LEASE_MS);
+        assert!(!super::presentation_stalled(false, lease * 2));
+        assert!(!super::presentation_stalled(true, lease));
+        assert!(super::presentation_stalled(
+            true,
+            lease + std::time::Duration::from_millis(1)
+        ));
+    }
 }

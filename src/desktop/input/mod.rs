@@ -6,19 +6,61 @@ use std::sync::Arc;
 mod linux;
 #[cfg(target_os = "macos")]
 mod macos;
+#[cfg(all(target_os = "linux", feature = "wayland"))]
+mod wayland;
 #[cfg(target_os = "linux")]
 use linux as platform;
 #[cfg(target_os = "macos")]
 use macos as platform;
 
+pub(super) fn is_wayland() -> bool {
+    #[cfg(all(target_os = "linux", feature = "wayland"))]
+    {
+        wayland::active()
+    }
+    #[cfg(not(all(target_os = "linux", feature = "wayland")))]
+    false
+}
+pub(super) fn mouse_triggers_supported() -> bool {
+    cfg!(target_os = "macos") || is_wayland()
+}
 pub(super) fn stop() {
     #[cfg(target_os = "macos")]
     macos::stop();
+    #[cfg(all(target_os = "linux", feature = "wayland"))]
+    if wayland::active() {
+        wayland::stop();
+    }
+}
+pub(super) fn enabled_changed(_enabled: bool) {
+    #[cfg(all(target_os = "linux", feature = "wayland"))]
+    if wayland::active() {
+        wayland::enabled(_enabled);
+    }
+}
+#[cfg(all(target_os = "linux", feature = "wayland"))]
+pub(super) fn received_enabled(enabled: bool) {
+    wayland::received_enabled(enabled);
+}
+pub(super) fn apply_settings(_settings: &Settings) -> Result<(), OwnerError> {
+    #[cfg(all(target_os = "linux", feature = "wayland"))]
+    if wayland::active() {
+        return wayland::apply(_settings).map_err(OwnerError::unavailable);
+    }
+    Ok(())
 }
 pub(super) fn run(shared: Arc<Shared>) -> Result<(), String> {
+    #[cfg(all(target_os = "linux", feature = "wayland"))]
+    if wayland::active() {
+        return wayland::run(shared);
+    }
     platform::run(shared)
 }
 pub(super) fn replay(events: &[ReplayInput]) -> usize {
+    #[cfg(all(target_os = "linux", feature = "wayland"))]
+    if wayland::active() {
+        return 0;
+    } // Only the compositor may replay native Wayland input.
     let mut count = 0;
     for &event in events {
         if cfg!(target_os = "macos")
@@ -35,6 +77,10 @@ pub(super) fn replay(events: &[ReplayInput]) -> usize {
     count
 }
 pub(crate) fn supported_vk(vk: u8) -> bool {
+    #[cfg(all(target_os = "linux", feature = "wayland"))]
+    if wayland::active() {
+        return pingloom_core::niri_bridge::evdev(vk).is_some();
+    }
     platform::supported_vk(vk)
 }
 pub(super) fn validate(settings: &Settings) -> Result<(), OwnerError> {
@@ -44,7 +90,7 @@ pub(super) fn validate(settings: &Settings) -> Result<(), OwnerError> {
     ] {
         let supported = match trigger {
             Some(Trigger::Key { vk }) => supported_vk(vk),
-            Some(Trigger::Mouse4 | Trigger::Mouse5) => cfg!(target_os = "macos"),
+            Some(Trigger::Mouse4 | Trigger::Mouse5) => mouse_triggers_supported(),
             Some(Trigger::CapsLock) => cfg!(target_os = "linux"),
             _ => true,
         };

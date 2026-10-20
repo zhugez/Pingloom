@@ -236,7 +236,7 @@ pub enum Trigger {
     Key { vk: u8 },
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum WheelKind {
     Ping,
     Emote,
@@ -251,7 +251,7 @@ pub enum Button {
     X2,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Point {
     pub x: i32,
     pub y: i32,
@@ -296,7 +296,7 @@ pub enum InputEvent {
     },
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum Action {
     WheelOpen {
         wheel: WheelKind,
