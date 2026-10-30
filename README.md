@@ -21,7 +21,7 @@
   <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/Rust-2021%20Edition-black?logo=rust&logoColor=white" alt="Rust" /></a>
   <a href="https://v2.tauri.app/"><img src="https://img.shields.io/badge/Tauri-v2-24C8DB?logo=tauri&logoColor=white" alt="Tauri 2" /></a>
   <a href="https://svelte.dev/"><img src="https://img.shields.io/badge/Svelte-v5-FF3E00?logo=svelte&logoColor=white" alt="Svelte 5" /></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue" alt="License" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-blue" alt="License" /></a>
   <a href="https://github.com/zhugez/pingloom/issues"><img src="https://img.shields.io/badge/Issues-zhugez%2Fpingloom-informational?logo=github" alt="Issue Tracker" /></a>
 </p>
 
@@ -221,7 +221,7 @@ Before distributing `pingloom.exe` on Windows 11, verify the following manual te
 
 ## Attribution & Legal Notices
 
-- **License**: Pingloom source code is released under the [MIT License](LICENSE).
-- **Riot Games Assets**: Bundled League of Legends ping textures, sound effects, and emote graphics are © Riot Games, Inc. and are **not** covered by the MIT license. Bundling within this project grants no redistribution rights; verify usage rights before redistributing. Pingloom is not endorsed by Riot Games and does not reflect the views or opinions of Riot Games or anyone officially involved in producing or managing League of Legends properties.
+- **License**: Pingloom source code is released under the [GPL-3.0 License](LICENSE).
+- **Riot Games Assets**: Bundled League of Legends ping textures, sound effects, and emote graphics are © Riot Games, Inc. and are **not** covered by the GPL-3.0 license. Bundling within this project grants no redistribution rights; verify usage rights before redistributing. Pingloom is not endorsed by Riot Games and does not reflect the views or opinions of Riot Games or anyone officially involved in producing or managing League of Legends properties.
 - **Font Assets**: Bundled variable fonts for **Plus Jakarta Sans** are licensed under the SIL Open Font License 1.1.
 - **Issues & Contributions**: Issue tracking and pull requests are managed at [`zhugez/pingloom`](https://github.com/zhugez/pingloom).
