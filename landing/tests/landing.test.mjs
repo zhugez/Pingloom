@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 import worker from '../src/index.js';
 
 const publicDir = new URL('../public/', import.meta.url);
@@ -54,6 +55,40 @@ test('download redirects and status remain available; unknown paths go to static
   assert.equal(response.status, 404);
 });
 
+test('fixed asset URLs revalidate with ETags and preserve conditional, HEAD and missing responses', { timeout: 30000 }, async t => {
+  const { unstable_dev } = await import('wrangler');
+  const server = await unstable_dev(fileURLToPath(new URL('../src/index.js', import.meta.url)), {
+    config: fileURLToPath(new URL('../wrangler.toml', import.meta.url)),
+    local: true, persist: false, ip: '127.0.0.1', port: 0, inspectorPort: 0, logLevel: 'none',
+    experimental: { disableExperimentalWarning: true, disableDevRegistry: true, watch: false },
+  });
+  t.after(() => server.stop());
+  for (const path of [
+    '/demo.js', '/style.css', '/catalog.json', '/fonts/plus-jakarta-sans-latin-wght-normal.woff2',
+    '/images/pingloom-native-wheel-v7.webp', '/images/mark.svg',
+    catalog.pings[0].image, catalog.emotes[0].effect, catalog.pings[0].sound,
+  ]) {
+    const response = await server.fetch(path);
+    assert.equal(response.status, 200, path);
+    assert.equal(response.headers.get('cache-control'), 'public, max-age=0, must-revalidate', path);
+    const etag = response.headers.get('etag');
+    assert.ok(etag, path);
+    assert.ok((await response.arrayBuffer()).byteLength > 0, path);
+    const unchanged = await server.fetch(path, { headers: { 'If-None-Match': etag } });
+    assert.equal(unchanged.status, 304, path);
+    assert.equal(unchanged.headers.get('etag'), etag, path);
+    assert.equal((await unchanged.arrayBuffer()).byteLength, 0, path);
+    const head = await server.fetch(path, { method: 'HEAD' });
+    assert.equal(head.status, 200, path);
+    assert.equal(head.headers.get('cache-control'), 'public, max-age=0, must-revalidate', path);
+    assert.equal(head.headers.get('etag'), etag, path);
+    assert.equal((await head.arrayBuffer()).byteLength, 0, path);
+  }
+  const missing = await server.fetch('/images/missing.webp');
+  assert.equal(missing.status, 404);
+  assert.ok(!missing.headers.get('cache-control')?.includes('immutable'));
+});
+
 test('displayed version stays v0.1.0 while all distribution links select the approved build', async () => {
   const config = await readFile(new URL('../wrangler.toml', import.meta.url), 'utf8');
   const env = {
@@ -96,6 +131,14 @@ test('displayed version stays v0.1.0 while all distribution links select the app
 
 test('seo metadata, canonical, OpenGraph, Twitter and valid JSON-LD are served truthfully', async () => {
   const html = await (await worker.fetch(new Request('https://test/'), {})).text();
+  const title = 'League of Legends Ping Wheel for Your Desktop | Pingloom';
+  assert.ok(html.includes(`<title>${title}</title>`));
+  assert.ok(html.includes(`<meta property="og:title" content="${title}">`));
+  assert.ok(html.includes(`<meta name="twitter:title" content="${title}">`));
+  const description = html.match(/<meta name="description" content="([^"]+)"/)[1];
+  assert.match(description, /League of Legends ping wheel on your desktop/);
+  assert.ok(html.includes(`<meta property="og:description" content="${description}">`));
+  assert.ok(html.includes(`<meta name="twitter:description" content="${description}">`));
   assert.ok(html.includes('<link rel="canonical" href="https://pingloom.zhugez.workers.dev/">'));
   assert.ok(html.includes('<meta property="og:type" content="website">'));
   assert.ok(html.includes('<meta property="og:url" content="https://pingloom.zhugez.workers.dev/">'));
@@ -121,13 +164,19 @@ test('seo metadata, canonical, OpenGraph, Twitter and valid JSON-LD are served t
   assert.equal(schema['@type'], 'SoftwareApplication');
   assert.equal(schema.name, 'Pingloom');
   assert.equal(schema.softwareVersion, '0.1.0');
-  assert.ok(schema.operatingSystem.includes('Windows 11') && schema.operatingSystem.includes('macOS'));
+  assert.equal(schema.description, description);
+  assert.equal(schema.operatingSystem, 'Windows 11, macOS (experimental), NixOS (niri Wayland, experimental source edition)');
   assert.equal(schema.offers?.price, '0');
   assert.equal(schema.offers?.priceCurrency, 'USD');
   assert.equal(schema.url, 'https://pingloom.zhugez.workers.dev/');
   assert.equal(schema.sameAs, 'https://github.com/zhugez/pingloom');
   assert.equal(schema.license, 'https://www.gnu.org/licenses/gpl-3.0.html');
-  assert.equal(schema.downloadUrl, 'https://pingloom.zhugez.workers.dev/#download');
+  assert.deepEqual(schema.downloadUrl, ['windows', 'windows-portable', 'macos'].map(platform => `https://pingloom.zhugez.workers.dev/download/${platform}`));
+  for (const url of schema.downloadUrl) {
+    const response = await worker.fetch(new Request(url), {});
+    assert.equal(response.status, 302);
+    assert.match(response.headers.get('location'), /^https:\/\/github.com\/zhugez\/pingloom\/releases\/download\/v0\.1\.0-opt\.3\/.+\.(exe|zip)$/);
+  }
   assert.equal(schema.author?.name, 'zhugez');
   assert.ok(Array.isArray(schema.featureList) && schema.featureList.length >= 4);
   assert.equal(schema.screenshot, ogImage);
