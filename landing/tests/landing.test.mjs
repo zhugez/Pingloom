@@ -126,7 +126,7 @@ test('seo metadata, canonical, OpenGraph, Twitter and valid JSON-LD are served t
   assert.equal(schema.offers?.priceCurrency, 'USD');
   assert.equal(schema.url, 'https://pingloom.zhugez.workers.dev/');
   assert.equal(schema.sameAs, 'https://github.com/zhugez/pingloom');
-  assert.equal(schema.license, 'https://opensource.org/licenses/MIT');
+  assert.equal(schema.license, 'https://www.gnu.org/licenses/gpl-3.0.html');
   assert.equal(schema.downloadUrl, 'https://pingloom.zhugez.workers.dev/#download');
   assert.equal(schema.author?.name, 'zhugez');
   assert.ok(Array.isArray(schema.featureList) && schema.featureList.length >= 4);

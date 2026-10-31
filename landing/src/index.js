@@ -130,7 +130,7 @@ function page(version, releaseTag, repo, siteUrl = SITE_URL) {
     softwareVersion: version,
     url: `${siteUrl}/`,
     sameAs: repo,
-    license: 'https://opensource.org/licenses/MIT',
+    license: 'https://www.gnu.org/licenses/gpl-3.0.html',
     downloadUrl: `${siteUrl}/#download`,
     image: ogImage,
     screenshot: ogImage,
@@ -300,7 +300,7 @@ function page(version, releaseTag, repo, siteUrl = SITE_URL) {
       <p class="download-note">Traditional Linux packages: in progress. <a href="${repo}/blob/main/docs/PLATFORMS.md">Platform requirements</a> · <a href="${repo}/releases/tag/${releaseTag}">Release notes</a></p>
     </section>
   </main>
-  <footer class="wrap"><div class="footer-top"><a class="brand" href="/">Pingloom</a><span>Free &amp; open source. Code under MIT.</span><a href="${repo}">View source</a></div><p>League ping and emote artwork © Riot Games, Inc. Not endorsed by Riot Games. <a href="/THIRD_PARTY_NOTICES.txt">Third-party notices</a>.</p></footer>
+  <footer class="wrap"><div class="footer-top"><a class="brand" href="/">Pingloom</a><span>Free &amp; open source. Code under GPL-3.0.</span><a href="${repo}">View source</a></div><p>League ping and emote artwork © Riot Games, Inc. Not endorsed by Riot Games. <a href="/THIRD_PARTY_NOTICES.txt">Third-party notices</a>.</p></footer>
   <script src="/demo.js" type="module"></script>
 </body>
 </html>`;
