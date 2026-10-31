@@ -90,23 +90,7 @@ export default {
         },
       }
     );
-    if (url.pathname !== '/') {
-      const assetResponse = await env.ASSETS.fetch(request);
-      if (assetResponse.status !== 200) return assetResponse;
-      const response = new Response(assetResponse.body, assetResponse);
-      if (
-        url.pathname.startsWith('/fonts/') ||
-        url.pathname.startsWith('/assets/') ||
-        url.pathname.startsWith('/images/') ||
-        url.pathname.endsWith('.css') ||
-        url.pathname.endsWith('.js')
-      ) {
-        response.headers.set('Cache-Control', 'public, max-age=31536000, immutable');
-      } else if (url.pathname.endsWith('.json')) {
-        response.headers.set('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
-      }
-      return response;
-    }
+    if (url.pathname !== '/') return env.ASSETS.fetch(request);
     return new Response(page(version, releaseTag, repo, SITE_URL), { headers: {
       'Content-Type': 'text/html; charset=utf-8',
       'Cache-Control': 'public, max-age=0, must-revalidate',
@@ -126,12 +110,12 @@ function page(version, releaseTag, repo, siteUrl = SITE_URL) {
     '@type': 'SoftwareApplication',
     name: 'Pingloom',
     applicationCategory: 'UtilitiesApplication',
-    operatingSystem: 'Windows 11, macOS',
+    operatingSystem: 'Windows 11, macOS (experimental), NixOS (niri Wayland, experimental source edition)',
     softwareVersion: version,
     url: `${siteUrl}/`,
     sameAs: repo,
     license: 'https://www.gnu.org/licenses/gpl-3.0.html',
-    downloadUrl: `${siteUrl}/#download`,
+    downloadUrl: ['windows', 'windows-portable', 'macos'].map(platform => `${siteUrl}/download/${platform}`),
     image: ogImage,
     screenshot: ogImage,
     description,
