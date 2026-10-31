@@ -118,8 +118,8 @@ export default {
 };
 
 function page(version, releaseTag, repo, siteUrl = SITE_URL) {
-  const title = 'Desktop Pings & Animated Emotes | Pingloom';
-  const description = 'Place League of Legends tactical pings and animated emotes on your desktop with an eight-slice radial gesture. Native Rust app, independent of the game process.';
+  const title = 'League of Legends Ping Wheel for Your Desktop | Pingloom';
+  const description = 'Put the League of Legends ping wheel on your desktop: an eight-slice radial gesture for tactical pings and animated emotes. Native Rust app, independent of the game process.';
   const ogImage = `${siteUrl}/images/pingloom-native-wheel-v7.png`;
   const schema = {
     '@context': 'https://schema.org',
@@ -199,7 +199,7 @@ function page(version, releaseTag, repo, siteUrl = SITE_URL) {
     <section class="hero" aria-labelledby="hero-title">
       <div class="hero-copy">
         <h1 id="hero-title"><span class="sr-only">Pingloom — </span>Eight directions.<br><span>One flick.</span></h1>
-        <p>Bring League of Legends tactical pings and animated emotes to your desktop with an eight-slice radial gesture. Runs natively in Rust, independent of the game process.</p>
+        <p>Bring the League of Legends ping wheel to your desktop: eight slices of tactical pings and animated emotes, drawn with a radial gesture. Runs natively in Rust, independent of the game process.</p>
         <a class="button primary large" href="#download">Get Pingloom</a>
         <a class="text-link" href="#playground">Give the Wheel a spin <span aria-hidden="true">↓</span></a>
         <p class="availability">Windows · Experimental macOS · NixOS (niri) · Free &amp; open source</p>
